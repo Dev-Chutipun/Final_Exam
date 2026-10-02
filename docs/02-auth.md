@@ -123,7 +123,7 @@ RETURNING id;
 |---|---|
 | รัน | `docker-compose.yml` service `keycloak` พอร์ต `8081:8080`, คำสั่ง `start-dev --import-realm`, mount `./keycloak` ไปที่ `/opt/keycloak/data/import` |
 | เวอร์ชัน | ใช้เวอร์ชันเสถียรล่าสุด ณ วันติดตั้ง แล้ว **ระบุ tag ตายตัว** ห้ามใช้ `latest` |
-| Admin | ตั้งผ่าน environment ตามชื่อที่เวอร์ชันนั้นกำหนด (ตรวจใน spike ข้อ 1) |
+| Admin | ตั้งผ่าน environment ตามชื่อที่เวอร์ชันนั้นกำหนด (ตรวจใน spike ข้อ 1) · 26.8.0 ใช้ `KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` ค่า `admin` / `admin` ใน `docker-compose.yml` (ใช้บนเครื่องเท่านั้น) |
 | Realm | `devpool` |
 | ตั้งค่า realm | `registrationAllowed: true` (สไลด์ 5 กำหนดให้สมัครได้), `verifyEmail: false`, `bruteForceProtected: true` |
 | Client | `devpool-web` · confidential · Standard flow เปิด · Direct access grants ปิด · Implicit ปิด · PKCE `S256` · redirect URI `http://localhost:3000/api/auth/callback` · post logout redirect `http://localhost:3000/` · secret `devpool-local-secret` |
@@ -139,7 +139,7 @@ RETURNING id;
 ทุกบัญชีมี email (เช่น `alice@example.com`), `emailVerified: true`, `firstName`, `lastName` เพื่อไม่ให้ Keycloak ถามข้อมูลเพิ่มตอน login
 ผู้รีวิวตัวอย่างอื่นใน seed (เช่น ดนัย, มาลี) สร้างเฉพาะในตาราง `users` ด้วย `issuer = 'seed://local'` และไม่สามารถ login ได้
 
-**ข้อยกเว้นเรื่อง secret:** `OIDC_CLIENT_SECRET` และรหัสผ่านทดสอบอยู่ในไฟล์ realm และ `.env.example` ได้ เพราะใช้บนเครื่องเท่านั้น README ต้องเขียนกำกับไว้ชัด
+**ข้อยกเว้นเรื่อง secret:** `OIDC_CLIENT_SECRET`, รหัสผ่านทดสอบ และรหัส admin ของ Keycloak อยู่ในไฟล์ realm, `.env.example` และ `docker-compose.yml` ได้ เพราะใช้บนเครื่องเท่านั้น README ต้องเขียนกำกับไว้ชัด
 
 **Go ต้องรันบนเครื่อง ไม่รันใน Docker:** ค่า `iss` ใน token ขึ้นกับ hostname ที่ใช้เรียก Keycloak ถ้า browser ใช้ `localhost:8081` แต่ Go ใช้ชื่อภายใน Docker ค่าจะไม่ตรงกัน
 

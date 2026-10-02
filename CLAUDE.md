@@ -52,7 +52,7 @@
 ## ห้ามทำ
 - ห้ามมี header, query หรือช่องทางใดๆ สำหรับสลับผู้ใช้ใน production code (fake auth อยู่ใน `_test.go` เท่านั้น)
 - ห้ามใช้ Repeatable Read หรือ Serializable ในงานที่ล็อกแถวร้าน
-- ห้าม commit secret จริง **ยกเว้น** `OIDC_CLIENT_SECRET` และรหัสผ่านบัญชีทดสอบที่ใช้บนเครื่องเท่านั้น (ต้องระบุใน README)
+- ห้าม commit secret จริง **ยกเว้น** `OIDC_CLIENT_SECRET`, รหัสผ่านบัญชีทดสอบ และรหัส admin ของ Keycloak ที่ใช้บนเครื่องเท่านั้น (ต้องระบุใน README)
 - ห้ามรัน Go ใน Docker (ค่า issuer ของ token จะไม่ตรง)
 
 ## คำสั่ง
