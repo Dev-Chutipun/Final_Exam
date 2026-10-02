@@ -60,7 +60,7 @@ type Problem struct {
 	Title  string
 	Status int
 	Detail string
-	Errors []FieldError    // ใช้กับ validation เท่านั้น
+	Errors []FieldError   // ใช้กับ validation เท่านั้น
 	Extra  map[string]any // ฟิลด์เพิ่ม เช่น available, full_from, conflicts
 }
 
