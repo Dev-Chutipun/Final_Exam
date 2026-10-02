@@ -2,6 +2,8 @@ package httpx
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -39,6 +41,7 @@ func TestProblemTableMatchesSpec(t *testing.T) {
 		"restaurant-has-upcoming-bookings":  409,
 		"image-limit-reached":               409,
 		"last-image":                        409,
+		"internal-error":                    500,
 	}
 	if len(problems) != len(spec) {
 		t.Errorf("problems มี %d type แต่สเปกมี %d", len(problems), len(spec))
@@ -98,6 +101,27 @@ func TestWriteProblem(t *testing.T) {
 	}
 	if _, ok := body["errors"]; ok {
 		t.Error("errors ต้องมีเฉพาะ validation")
+	}
+}
+
+func TestWriteError(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/x", nil)
+
+	// *Problem (แม้ถูกห่อด้วย %w) ตอบตาม type ของมัน
+	rec := httptest.NewRecorder()
+	WriteError(rec, req, fmt.Errorf("wrap: %w", New("not-found", "")))
+	if rec.Code != 404 || !strings.Contains(rec.Body.String(), `"/problems/not-found"`) {
+		t.Errorf("problem: got %d %s", rec.Code, rec.Body.String())
+	}
+
+	// error อื่นได้ 500 และต้องไม่เปิดเผยข้อความภายใน
+	rec = httptest.NewRecorder()
+	WriteError(rec, req, errors.New("connection refused: secret-host:5432"))
+	if rec.Code != 500 || !strings.Contains(rec.Body.String(), `"/problems/internal-error"`) {
+		t.Errorf("internal: got %d %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "secret-host") {
+		t.Errorf("response เปิดเผยรายละเอียดภายใน: %s", rec.Body.String())
 	}
 }
 

@@ -3,6 +3,8 @@ package httpx
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 )
 
@@ -42,6 +44,7 @@ var problems = map[string]problemDef{
 	"restaurant-has-upcoming-bookings":  {http.StatusConflict, "ร้านยังมีการจองที่จะมาถึง"},
 	"image-limit-reached":               {http.StatusConflict, "มีรูปครบ 3 รูปแล้ว"},
 	"last-image":                        {http.StatusConflict, "ลบรูปสุดท้ายไม่ได้"},
+	"internal-error":                    {http.StatusInternalServerError, "เกิดข้อผิดพลาดในระบบ"},
 }
 
 // FieldError คือรายการใน errors[] ของ problem แบบ validation
@@ -123,6 +126,20 @@ func Write(w http.ResponseWriter, p *Problem) {
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(p.Status)
 	_ = json.NewEncoder(w).Encode(p)
+}
+
+// WriteError ตอบ error ที่ได้จาก service
+//   - เป็น *Problem → ตอบตาม type นั้น
+//   - อย่างอื่น (เช่น ฐานข้อมูลล่ม) → log error จริงไว้ที่เซิร์ฟเวอร์ แล้วตอบ 500 internal-error
+//     โดยไม่ใส่ข้อความ error ใน response เพื่อไม่ให้รายละเอียดภายในหลุดออกไป
+func WriteError(w http.ResponseWriter, r *http.Request, err error) {
+	var p *Problem
+	if errors.As(err, &p) {
+		Write(w, p)
+		return
+	}
+	log.Printf("internal error: %s %s: %v", r.Method, r.URL.Path, err)
+	Write(w, New("internal-error", ""))
 }
 
 // WriteJSON ตอบ JSON ปกติ

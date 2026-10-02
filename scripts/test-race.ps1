@@ -9,7 +9,8 @@ param(
     [switch]$Concurrent
 )
 
-$ErrorActionPreference = 'Stop'
+# No $ErrorActionPreference = 'Stop' here: PowerShell 5.1 turns docker's stderr
+# (e.g. "go: downloading ...") into a terminating error. The exit code decides instead.
 
 $root = Split-Path -Parent $PSScriptRoot
 $backend = Join-Path $root 'backend'
