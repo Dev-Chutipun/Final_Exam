@@ -89,6 +89,125 @@ func (s *Service) Create(ctx context.Context, userID, restaurantID int64, req Re
 	return b, err
 }
 
+// Update แก้การจองตาม 01 §7.2 (ส่งครบทุกค่า แทนค่าเดิมทั้งหมด ห้ามเปลี่ยนร้าน)
+func (s *Service) Update(ctx context.Context, userID, bookingID int64, req Request, now time.Time) (Booking, error) {
+	if err := req.Validate(); err != nil {
+		return Booking{}, err
+	}
+
+	var b Booking
+	err := db.WithTx(ctx, s.Pool, func(tx pgx.Tx) error {
+		// 2: หาร้านของการจอง (เฉพาะของผู้ใช้คนนี้ ไม่เปิดเผยว่าเป็นการจองของคนอื่น)
+		var restaurantID int64
+		err := tx.QueryRow(ctx,
+			`SELECT restaurant_id FROM bookings WHERE id = $1 AND user_id = $2`,
+			bookingID, userID).Scan(&restaurantID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return httpx.New("not-found", "ไม่พบการจองนี้")
+		}
+		if err != nil {
+			return err
+		}
+
+		// 3: ล็อกตามลำดับ ร้าน → การจอง
+		r, err := db.LockRestaurant(ctx, tx, restaurantID)
+		if errors.Is(err, db.ErrNotFound) {
+			return httpx.New("not-found", "ไม่พบร้านนี้")
+		}
+		if err != nil {
+			return err
+		}
+		var status string
+		var deadline time.Time
+		err = tx.QueryRow(ctx,
+			`SELECT status, cancel_deadline FROM bookings WHERE id = $1 FOR UPDATE`,
+			bookingID).Scan(&status, &deadline)
+		if err != nil {
+			return err
+		}
+
+		// 4–6
+		if status != "active" {
+			return httpx.New("booking-not-active", "การจองนี้ถูกยกเลิกแล้ว แก้ไขไม่ได้")
+		}
+		if !CanModify(now, deadline) {
+			return httpx.New("cancel-deadline-passed",
+				"แก้ไขได้ถึง "+deadline.In(Bangkok).Format("02/01/2006 15:04")+" เท่านั้น")
+		}
+		if !r.AcceptingBookings {
+			return httpx.New("restaurant-not-accepting-bookings", "ร้านนี้พักรับจองชั่วคราว แก้ไขการจองไม่ได้")
+		}
+
+		// 7: กติกาเดียวกับจองใหม่ โดยตัดการจองนี้ออก (ไม่นับที่นั่งของตัวเองซ้ำ — สไลด์ 8)
+		if err := checkSeats(ctx, tx, r, userID, req, now, bookingID); err != nil {
+			return err
+		}
+
+		// 8: deadline ใหม่ตามนโยบายปัจจุบันของร้าน
+		b = Booking{
+			ID:             bookingID,
+			RestaurantID:   r.ID,
+			PartySize:      req.PartySize,
+			StartAt:        req.StartAt.In(Bangkok),
+			EndAt:          req.EndAt.In(Bangkok),
+			Status:         "active",
+			CancelDeadline: CancelDeadline(req.StartAt, r.CancelWindowMinutes).In(Bangkok),
+		}
+		_, err = tx.Exec(ctx, `
+			UPDATE bookings
+			   SET party_size = $2, start_at = $3, end_at = $4, cancel_deadline = $5, updated_at = $6
+			 WHERE id = $1`,
+			b.ID, b.PartySize, b.StartAt, b.EndAt, b.CancelDeadline, now)
+		return err
+	})
+	return b, err
+}
+
+// Cancel ยกเลิกการจองตาม 01 §7.3
+// ไม่เช็คที่นั่งและไม่ล็อกแถวร้าน: การยกเลิกมีแต่ทำให้ที่นั่งว่างขึ้น จึงไม่มีทางทำให้จองเกิน
+// ใช้ UPDATE แบบมีเงื่อนไขคำสั่งเดียว เงื่อนไขทั้งหมดถูกตรวจแบบ atomic ในคำสั่งนั้น
+func (s *Service) Cancel(ctx context.Context, userID, bookingID int64, now time.Time) (Booking, error) {
+	var b Booking
+	err := s.Pool.QueryRow(ctx, `
+		UPDATE bookings
+		   SET status = 'cancelled', cancelled_at = $3, updated_at = $3
+		 WHERE id = $1 AND user_id = $2 AND status = 'active' AND $3 <= cancel_deadline
+		RETURNING id, restaurant_id, party_size, start_at, end_at, status, cancel_deadline`,
+		bookingID, userID, now).
+		Scan(&b.ID, &b.RestaurantID, &b.PartySize, &b.StartAt, &b.EndAt, &b.Status, &b.CancelDeadline)
+	if err == nil {
+		return b.inBangkok(), nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return Booking{}, err
+	}
+
+	// ไม่มีแถวถูกอัปเดต: อ่านแถวนั้นเพื่อบอกสาเหตุ
+	var status string
+	var deadline time.Time
+	err = s.Pool.QueryRow(ctx,
+		`SELECT status, cancel_deadline FROM bookings WHERE id = $1 AND user_id = $2`,
+		bookingID, userID).Scan(&status, &deadline)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return Booking{}, httpx.New("not-found", "ไม่พบการจองนี้")
+	case err != nil:
+		return Booking{}, err
+	case status == "cancelled":
+		return Booking{}, httpx.New("already-cancelled", "การจองนี้ถูกยกเลิกไปแล้ว")
+	default:
+		return Booking{}, httpx.New("cancel-deadline-passed",
+			"ยกเลิกได้ถึง "+deadline.In(Bangkok).Format("02/01/2006 15:04")+" เท่านั้น")
+	}
+}
+
+func (b Booking) inBangkok() Booking {
+	b.StartAt = b.StartAt.In(Bangkok)
+	b.EndAt = b.EndAt.In(Bangkok)
+	b.CancelDeadline = b.CancelDeadline.In(Bangkok)
+	return b
+}
+
 // checkSeats คือขั้น 6–10 ของ 01 §7.1 ต้องเรียกหลัง LockRestaurant
 // excludeID คือการจองที่กำลังแก้ไข ซึ่งต้องตัดออกไม่ให้นับที่นั่งของตัวเองซ้ำ (สไลด์ 8)
 func checkSeats(ctx context.Context, tx pgx.Tx, r db.Restaurant, userID int64, req Request, now time.Time, excludeID int64) error {

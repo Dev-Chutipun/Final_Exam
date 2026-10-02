@@ -18,6 +18,110 @@ type Handler struct {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/restaurants/{id}/bookings", h.create)
+	mux.HandleFunc("PATCH /api/bookings/{id}", h.update)
+	mux.HandleFunc("POST /api/bookings/{id}/cancel", h.cancel)
+	mux.HandleFunc("GET /api/me/bookings", h.mine)
+	mux.HandleFunc("GET /api/restaurants/{id}/availability", h.availability)
+}
+
+// requireUser คืน userID หรือตอบ 401 แล้วคืน false
+func requireUser(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	id, ok := auth.UserID(r.Context())
+	if !ok {
+		httpx.Write(w, httpx.New("unauthenticated", "ต้องเข้าสู่ระบบก่อน"))
+	}
+	return id, ok
+}
+
+// PATCH /api/bookings/{id} (01 §7.2)
+func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	bookingID, ok := pathID(r, "id")
+	if !ok {
+		httpx.Write(w, httpx.New("not-found", "ไม่พบการจองนี้"))
+		return
+	}
+	var body requestBody
+	if !httpx.ReadJSON(w, r, &body) {
+		return
+	}
+	req, err := body.parse()
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	b, err := h.Svc.Update(r.Context(), userID, bookingID, req, h.Now())
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, b)
+}
+
+// POST /api/bookings/{id}/cancel (01 §7.3) ไม่มี body
+func (h *Handler) cancel(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	bookingID, ok := pathID(r, "id")
+	if !ok {
+		httpx.Write(w, httpx.New("not-found", "ไม่พบการจองนี้"))
+		return
+	}
+	b, err := h.Svc.Cancel(r.Context(), userID, bookingID, h.Now())
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, b)
+}
+
+// GET /api/me/bookings?tab=upcoming|past|cancelled&page=&page_size= (01 §7.4)
+func (h *Handler) mine(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	tab, err := ValidTab(r.URL.Query().Get("tab"))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	page, err := httpx.ParsePage(r, 20, 50)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	res, err := h.Svc.MyBookings(r.Context(), userID, tab, page, h.Now())
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
+// GET /api/restaurants/{id}/availability?date=YYYY-MM-DD (01 §7.5) สาธารณะ
+func (h *Handler) availability(w http.ResponseWriter, r *http.Request) {
+	restaurantID, ok := pathID(r, "id")
+	if !ok {
+		httpx.Write(w, httpx.New("not-found", "ไม่พบร้านนี้"))
+		return
+	}
+	day, err := ParseDate("date", r.URL.Query().Get("date"))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	a, err := h.Svc.Availability(r.Context(), restaurantID, day, h.Now())
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, a)
 }
 
 // requestBody คือ JSON ที่รับ เวลารับเป็นสตริงเพื่อบอกได้ว่าฟิลด์ไหน parse ไม่ได้
@@ -29,9 +133,8 @@ type requestBody struct {
 
 // POST /api/restaurants/{id}/bookings (01 §7.1)
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
-	userID, ok := auth.UserID(r.Context())
+	userID, ok := requireUser(w, r)
 	if !ok {
-		httpx.Write(w, httpx.New("unauthenticated", "ต้องเข้าสู่ระบบก่อนจอง"))
 		return
 	}
 	restaurantID, ok := pathID(r, "id")
