@@ -2,15 +2,18 @@
 // สถานะการเรียงและหน้าอยู่ใน URL (searchParams)
 import Link from "next/link";
 
+import { Suspense } from "react";
+
 import { Pill } from "@/components/pill";
 import { Button } from "@/components/ui/button";
 import { apiGet } from "@/lib/api-server";
-import type { Page, RestaurantListItem } from "@/lib/types";
+import type { Category, Page, RestaurantListItem } from "@/lib/types";
 
 import { RestaurantCard } from "./restaurant-card";
+import { SearchBox } from "./search-box";
 import { SortSelect } from "./sort-select";
 
-type Search = { sort?: string; page?: string };
+type Search = { sort?: string; page?: string; q?: string; category?: string | string[] };
 
 const PAGE_SIZE = 12;
 
@@ -18,16 +21,31 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   const sp = await searchParams;
   const sort = sp.sort === "most_reviewed" ? "most_reviewed" : "highest_rated";
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const q = (sp.q ?? "").trim().slice(0, 100);
+  const selected = ([] as string[]).concat(sp.category ?? []);
 
-  const query = new URLSearchParams({ sort, page: String(page), page_size: String(PAGE_SIZE) });
-  const data = await apiGet<Page<RestaurantListItem>>(`/api/restaurants?${query}`);
+  const categories = await apiGet<Category[]>("/api/categories");
+  const known = selected.filter((s) => categories.some((c) => c.slug === s)); // slug ที่ไม่มีจริงตัดทิ้ง
+
+  // สร้าง query จากสถานะใน URL (q, category ซ้ำได้ = OR)
+  const build = (over: { page?: number; categories?: string[] } = {}) => {
+    const u = new URLSearchParams({ sort });
+    if (q) u.set("q", q);
+    for (const c of over.categories ?? known) u.append("category", c);
+    const p = over.page ?? 1;
+    if (p > 1) u.set("page", String(p));
+    return u;
+  };
+  const api = build({ page });
+  api.set("page", String(page));
+  api.set("page_size", String(PAGE_SIZE));
+  const data = await apiGet<Page<RestaurantListItem>>(`/api/restaurants?${api}`);
   const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
 
-  const pageHref = (p: number) => {
-    const q = new URLSearchParams({ sort });
-    if (p > 1) q.set("page", String(p));
-    return `/?${q}`;
-  };
+  const pageHref = (p: number) => `/?${build({ page: p })}`;
+  const toggleHref = (slug: string) =>
+    `/?${build({ categories: known.includes(slug) ? known.filter((s) => s !== slug) : [...known, slug] })}`;
+  const filtered = q !== "" || known.length > 0;
 
   return (
     <main className="mx-auto max-w-[1232px] px-4 pt-12 pb-18 sm:px-6">
@@ -41,17 +59,44 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
         <p className="max-w-[620px] text-lg text-(--ink-2)">เลือกร้านที่ใช่ ดูที่ว่างรายช่วงเวลา แล้วจองโต๊ะได้ในไม่กี่ขั้นตอน</p>
       </section>
 
-      <div className="glass mx-auto mt-8 flex max-w-[880px] flex-col gap-2.5 rounded-3xl p-2.5 sm:flex-row sm:items-center sm:justify-end">
-        <SortSelect value={sort} />
+      <div className="glass mx-auto mt-8 flex max-w-[880px] flex-col gap-2.5 rounded-3xl p-2.5 sm:flex-row sm:items-center">
+        <Suspense fallback={null}>
+          <SearchBox initial={q} />
+          <SortSelect value={sort} />
+        </Suspense>
       </div>
+
+      {/* [B] กรองตามหมวด เลือกได้หลายหมวด (OR) */}
+      <nav aria-label="หมวดหมู่" className="mt-5 flex flex-wrap justify-center gap-2.5">
+        <Chip href={`/?${build({ categories: [] })}`} on={known.length === 0}>
+          ทั้งหมด
+        </Chip>
+        {categories.map((c) => (
+          <Chip key={c.id} href={toggleHref(c.slug)} on={known.includes(c.slug)}>
+            {c.name_th}
+          </Chip>
+        ))}
+      </nav>
 
       {data.items.length === 0 ? (
         <section className="glass mx-auto mt-11 flex max-w-xl flex-col items-center gap-3 rounded-(--r-card) p-10 text-center">
-          <h2 className="text-xl font-semibold">ยังไม่มีร้านในระบบ</h2>
-          <p className="text-(--ink-2)">เป็นคนแรกที่สร้างร้านของคุณได้เลย</p>
-          <Button asChild variant="cta">
-            <Link href="/my/restaurants/new">สร้างร้าน</Link>
-          </Button>
+          {filtered ? (
+            <>
+              <h2 className="text-xl font-semibold">ไม่พบร้านที่ตรงกับการค้นหา</h2>
+              <p className="text-(--ink-2)">ลองใช้คำค้นอื่น หรือเลือกหมวดอื่น</p>
+              <Button asChild variant="glass">
+                <Link href={`/?sort=${sort}`}>ล้างการค้นหา</Link>
+              </Button>
+            </>
+          ) : (
+            <>
+              <h2 className="text-xl font-semibold">ยังไม่มีร้านในระบบ</h2>
+              <p className="text-(--ink-2)">เป็นคนแรกที่สร้างร้านของคุณได้เลย</p>
+              <Button asChild variant="cta">
+                <Link href="/my/restaurants/new">สร้างร้าน</Link>
+              </Button>
+            </>
+          )}
         </section>
       ) : (
         <div className="mt-11 grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
@@ -87,5 +132,21 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
         </nav>
       )}
     </main>
+  );
+}
+
+function Chip({ href, on, children }: { href: string; on: boolean; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      aria-current={on ? "true" : undefined}
+      className={`flex min-h-[42px] items-center rounded-full border px-4.5 ${
+        on
+          ? "border-(--btn-primary-to) bg-linear-to-b from-(--btn-primary-from) to-(--btn-primary-to) font-semibold shadow-[inset_0_1px_0_#fff,0_6px_16px_rgba(107,91,214,0.2)]"
+          : "border-white/95 bg-white/62 font-medium shadow-[inset_0_1px_0_#fff,0_4px_12px_rgba(107,91,214,0.06)] backdrop-blur-[10px]"
+      }`}
+    >
+      {children}
+    </Link>
   );
 }
