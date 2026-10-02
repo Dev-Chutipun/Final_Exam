@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"devpool/internal/auth"
+	"devpool/internal/booking"
 	"devpool/internal/httpx"
 )
 
@@ -27,6 +28,61 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/restaurants/{id}/images/{imageId}", h.deleteImage)
 	mux.HandleFunc("GET /api/restaurants/{id}/images/{imageId}", h.image)
 	mux.HandleFunc("GET /api/me/restaurants", h.mine)
+	mux.HandleFunc("PATCH /api/restaurants/{id}/booking-status", h.bookingStatus)
+	mux.HandleFunc("GET /api/restaurants/{id}/bookings", h.dailyBookings)
+}
+
+// PATCH /api/restaurants/{id}/booking-status [B] body { "accepting_bookings": false }
+func (h *Handler) bookingStatus(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(r, "id")
+	if !ok {
+		httpx.Write(w, httpx.New("not-found", "ไม่พบร้านนี้"))
+		return
+	}
+	var body struct {
+		AcceptingBookings *bool `json:"accepting_bookings"`
+	}
+	if !httpx.ReadJSON(w, r, &body) {
+		return
+	}
+	if body.AcceptingBookings == nil {
+		httpx.Write(w, httpx.Validation("ข้อมูลไม่ครบ",
+			httpx.FieldError{Field: "accepting_bookings", Message: "จำเป็นต้องระบุ"}))
+		return
+	}
+	if err := h.Svc.SetAcceptingBookings(r.Context(), userID, id, *body.AcceptingBookings, h.Now()); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": id, "accepting_bookings": *body.AcceptingBookings})
+}
+
+// GET /api/restaurants/{id}/bookings?date=YYYY-MM-DD [B] เฉพาะเจ้าของร้าน
+func (h *Handler) dailyBookings(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(r, "id")
+	if !ok {
+		httpx.Write(w, httpx.New("not-found", "ไม่พบร้านนี้"))
+		return
+	}
+	day, err := booking.ParseDate("date", r.URL.Query().Get("date"))
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	res, err := h.Svc.DailyBookings(r.Context(), userID, id, day)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, res)
 }
 
 // เพดานขนาด body ของ multipart (03 §4.1, §4.3)

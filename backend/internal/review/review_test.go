@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -359,6 +360,62 @@ func TestListRestaurantsFields(t *testing.T) {
 	}
 	if body["page"] != float64(1) || body["page_size"] != float64(20) {
 		t.Errorf("paging = %v %v", body["page"], body["page_size"])
+	}
+}
+
+// Q1 [B]: ค้น "ครัว" เจอ "ครัวริมคลอง" · ค้น % ได้อักขระ % จริง · หมวด OR · q AND หมวด · slug ไม่มี 400
+func TestSearchQ1(t *testing.T) {
+	e := newEnv(t)
+	owner := e.user("owner")
+	mk := func(name, desc string, cats ...int) int64 {
+		id := e.restaurant(owner)
+		e.exec(`UPDATE restaurants SET name = $2, description = $3 WHERE id = $1`, id, name, desc)
+		for _, c := range cats {
+			e.exec(`INSERT INTO restaurant_categories (restaurant_id, category_id) VALUES ($1, $2)`, id, c)
+		}
+		return id
+	}
+	klong := mk("ครัวริมคลอง", "อาหารไทยบ้านๆ", 1)               // thai
+	sushi := mk("ซูชิบาร์ ท่าเรือ", "ปลาสด ลด 50% ทุกวันพุธ", 4) // japanese
+	sea := mk("ทะเลเผา", "กุ้ง_หอย ครัวทะเล", 9)                 // seafood
+	mk("ร้านอื่น", "ไม่มีอะไร", 2)                               // isan
+
+	search := func(q string) string {
+		t.Helper()
+		status, _, body := e.do("GET", "/api/restaurants?"+q, 0, "")
+		if status != 200 {
+			t.Fatalf("%s: %d %v", q, status, body)
+		}
+		var ids []int64
+		for _, it := range body["items"].([]any) {
+			ids = append(ids, int64(it.(map[string]any)["id"].(float64)))
+		}
+		if int(body["total"].(float64)) != len(ids) {
+			t.Errorf("%s: total %v ไม่ตรงกับจำนวนรายการ %d", q, body["total"], len(ids))
+		}
+		return fmt.Sprint(ids)
+	}
+	esc := url.QueryEscape
+
+	tests := []struct{ query, want string }{
+		{"q=" + esc("ครัว"), fmt.Sprint([]int64{klong, sea})}, // ชื่อหรือรายละเอียด
+		{"q=" + esc(" ครัวริม "), fmt.Sprint([]int64{klong})},
+		{"q=" + esc("%"), fmt.Sprint([]int64{sushi})}, // % เป็นอักขระจริง ไม่ใช่ wildcard
+		{"q=_", fmt.Sprint([]int64{sea})},             // _ เป็นอักขระจริง
+		{"q=" + esc(`\`), "[]"},
+		{"category=thai&category=seafood", fmt.Sprint([]int64{klong, sea})}, // หมวดใช้ OR
+		{"q=" + esc("ครัว") + "&category=thai", fmt.Sprint([]int64{klong})}, // q AND หมวด
+		{"q=", fmt.Sprint([]int64{klong, sushi, sea, 4})},                   // ว่าง = ไม่ค้น
+	}
+	for _, tc := range tests {
+		if got := search(tc.query); got != tc.want {
+			t.Errorf("%s: got %s, want %s", tc.query, got, tc.want)
+		}
+	}
+	for _, q := range []string{"category=thai&category=nope", "q=" + strings.Repeat("ก", 101)} {
+		if status, typ, _ := e.do("GET", "/api/restaurants?"+q, 0, ""); status != 400 || typ != "/problems/validation" {
+			t.Errorf("%.40s: %d %s", q, status, typ)
+		}
 	}
 }
 

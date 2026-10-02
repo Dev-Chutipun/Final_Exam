@@ -2,6 +2,8 @@ package review
 
 import (
 	"context"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 
@@ -48,16 +50,72 @@ func ValidSort(sort string) (string, error) {
 	return sort, nil
 }
 
+// Filter คือ [B] ค้นหาและกรองหมวด (03 §8)
+type Filter struct {
+	Q          string   // ตัดช่องว่างแล้ว ว่าง = ไม่ค้น
+	Categories []string // slug หลายค่าใช้ความหมาย OR
+}
+
+// filterSQL ใช้ $1 = pattern ของ ILIKE (NULL = ไม่ค้น) และ $2 = slug ของหมวด (ว่าง = ไม่กรอง)
+// เป็นสตริงคงที่ ค่าจากผู้ใช้ส่งเป็นพารามิเตอร์เสมอ · q AND หมวด
+const filterSQL = `
+	AND ($1::text IS NULL OR r.name ILIKE $1 OR r.description ILIKE $1)
+	AND (cardinality($2::text[]) = 0 OR EXISTS (
+	      SELECT 1 FROM restaurant_categories rc JOIN categories c ON c.id = rc.category_id
+	       WHERE rc.restaurant_id = r.id AND c.slug = ANY($2)))`
+
+// args แปลง Filter เป็นพารามิเตอร์ของ filterSQL
+// escape \ % _ ก่อนครอบด้วย %…% เพื่อให้ค้น "%" ได้อักขระ % จริง ไม่ใช่ wildcard
+func (f Filter) args() (*string, []string) {
+	var pattern *string
+	if f.Q != "" {
+		p := "%" + likeEscaper.Replace(f.Q) + "%"
+		pattern = &p
+	}
+	slugs := f.Categories
+	if slugs == nil {
+		slugs = []string{}
+	}
+	return pattern, slugs
+}
+
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// ValidFilter ตรวจ q (≤ 100 ตัวอักษร) และ slug ของหมวด (ไม่มีอยู่ → 400)
+func (s *Service) ValidFilter(ctx context.Context, q string, categories []string) (Filter, error) {
+	f := Filter{Q: strings.TrimSpace(q), Categories: categories}
+	if utf8.RuneCountInString(f.Q) > 100 {
+		return f, httpx.Validation("คำค้นยาวเกินไป", httpx.FieldError{Field: "q", Message: "ยาวได้ไม่เกิน 100 ตัวอักษร"})
+	}
+	if len(categories) > 0 {
+		var known int
+		if err := s.Pool.QueryRow(ctx,
+			`SELECT count(DISTINCT slug) FROM categories WHERE slug = ANY($1)`, categories).Scan(&known); err != nil {
+			return f, err
+		}
+		unique := map[string]bool{}
+		for _, c := range categories {
+			unique[c] = true
+		}
+		if known != len(unique) {
+			return f, httpx.Validation("หมวดไม่ถูกต้อง", httpx.FieldError{Field: "category", Message: "มีหมวดที่ไม่มีอยู่ในระบบ"})
+		}
+	}
+	return f, nil
+}
+
 // ListRestaurants คืนร้านที่ไม่ถูกลบ เรียงตามคะแนน viewer = 0 คือไม่ได้ login
 //
 // Bayesian score = (C × m + SUM(rating)) / (C + COUNT) โดย C = 5
 // m = ค่าเฉลี่ยรีวิวทั้งระบบของร้านที่ไม่ถูกลบ (ยังไม่มีรีวิวเลยใช้ 3.0)
 // ทำให้ 5.0 จาก 1 รีวิวไม่ชนะ 4.8 จาก 300 รีวิว: ร้านรีวิวน้อยถูกดึงเข้าหาค่าเฉลี่ยกลาง
-func (s *Service) ListRestaurants(ctx context.Context, sort string, viewer int64, page httpx.Page) (httpx.PageResult[ListItem], error) {
+func (s *Service) ListRestaurants(ctx context.Context, sort string, f Filter, viewer int64, page httpx.Page) (httpx.PageResult[ListItem], error) {
 	var res httpx.PageResult[ListItem]
+	pattern, slugs := f.args()
 
 	var total int
-	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM restaurants WHERE deleted_at IS NULL`).Scan(&total); err != nil {
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM restaurants r WHERE r.deleted_at IS NULL`+filterSQL,
+		pattern, slugs).Scan(&total); err != nil {
 		return res, err
 	}
 
@@ -76,15 +134,15 @@ func (s *Service) ListRestaurants(ctx context.Context, sort string, viewer int64
 		    FROM restaurants r
 		   CROSS JOIN g
 		    LEFT JOIN reviews v ON v.restaurant_id = r.id
-		   WHERE r.deleted_at IS NULL
+		   WHERE r.deleted_at IS NULL`+filterSQL+`
 		   GROUP BY r.id, g.m
 		)
 		SELECT id, name, capacity, to_char(open_time, 'HH24:MI'), to_char(close_time, 'HH24:MI'),
-		       accepting_bookings, owner_id = $3, review_count, avg_rating
+		       accepting_bookings, owner_id = $5, review_count, avg_rating
 		  FROM s
 		 ORDER BY `+sorts[sort]+`
-		 LIMIT $1 OFFSET $2`,
-		page.Size, page.Offset(), viewer)
+		 LIMIT $3 OFFSET $4`,
+		pattern, slugs, page.Size, page.Offset(), viewer)
 	if err != nil {
 		return res, err
 	}

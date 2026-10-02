@@ -42,7 +42,7 @@ func pathID(r *http.Request, name string) (int64, bool) {
 	return id, err == nil && id > 0
 }
 
-// GET /api/restaurants?sort=&page=&page_size= (01 §7.8) สาธารณะ
+// GET /api/restaurants?sort=&page=&page_size=&q=&category= (01 §7.8, 03 §8) สาธารณะ
 func (h *Handler) listRestaurants(w http.ResponseWriter, r *http.Request) {
 	sort, err := ValidSort(r.URL.Query().Get("sort"))
 	if err != nil {
@@ -54,7 +54,13 @@ func (h *Handler) listRestaurants(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	res, err := h.Svc.ListRestaurants(r.Context(), sort, viewer(r), page)
+	// [B] ?q=ครัว&category=thai&category=seafood
+	filter, err := h.Svc.ValidFilter(r.Context(), r.URL.Query().Get("q"), r.URL.Query()["category"])
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	res, err := h.Svc.ListRestaurants(r.Context(), sort, filter, viewer(r), page)
 	if err != nil {
 		httpx.WriteError(w, r, err)
 		return
