@@ -29,35 +29,44 @@ const tileFmt = {
   monthYear: new Intl.DateTimeFormat("th-TH", { timeZone: TZ, month: "short", year: "numeric" }),
 };
 
+type When = string | Date; // สตริง RFC 3339 จาก API หรือ Date
+
+const toDate = (v: When) => (typeof v === "string" ? new Date(v) : v);
+
 /** "อา. 11 ต.ค. 2569" (ปี พ.ศ. ตามค่าเริ่มต้นของ locale th-TH) */
-export function formatDate(iso: string): string {
-  return dateFmt.format(new Date(iso));
+export function formatDate(v: When): string {
+  return dateFmt.format(toDate(v));
 }
 
 /** "12:00" */
-export function formatTime(iso: string): string {
-  return timeFmt.format(new Date(iso));
+export function formatTime(v: When): string {
+  return timeFmt.format(toDate(v));
 }
 
 /** "12:00–13:00 น." */
-export function formatTimeRange(startIso: string, endIso: string): string {
-  return `${formatTime(startIso)}–${formatTime(endIso)} น.`;
+export function formatTimeRange(start: When, end: When): string {
+  return `${formatTime(start)}–${formatTime(end)} น.`;
 }
 
 /** "อา. 11 ต.ค. 2569 เวลา 11:30 น." */
-export function formatDateTime(iso: string): string {
-  return `${formatDate(iso)} เวลา ${formatTime(iso)} น.`;
+export function formatDateTime(v: When): string {
+  return `${formatDate(v)} เวลา ${formatTime(v)} น.`;
+}
+
+/** เลื่อนเวลาเป็นนาที (ใช้คำนวณค่าที่แสดงเท่านั้น เซิร์ฟเวอร์เป็นผู้ตัดสินจริง) */
+export function addMinutes(v: When, minutes: number): Date {
+  return new Date(toDate(v).getTime() + minutes * 60_000);
 }
 
 /** ไทล์วันที่ในหน้าการจองของฉัน */
-export function dateTile(iso: string) {
-  const d = new Date(iso);
+export function dateTile(v: When) {
+  const d = toDate(v);
   return { weekday: tileFmt.weekday.format(d), day: tileFmt.day.format(d), monthYear: tileFmt.monthYear.format(d) };
 }
 
 /** วันที่ตามเวลา Bangkok เป็น "YYYY-MM-DD" (en-CA เรียงแบบนี้พอดี) */
-export function localDate(iso: string | Date): string {
-  return partsFmt.format(typeof iso === "string" ? new Date(iso) : iso);
+export function localDate(v: When): string {
+  return partsFmt.format(toDate(v));
 }
 
 /** วันนี้ตามเวลา Bangkok "YYYY-MM-DD" */

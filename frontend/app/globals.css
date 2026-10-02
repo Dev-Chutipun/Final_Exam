@@ -160,6 +160,12 @@
   }
 }
 
+/* ฉากหลังของ Dialog ใช้ token --overlay (ไม่แก้ไฟล์ใน components/ui จึงตั้งผ่าน data-slot) */
+[data-slot="dialog-overlay"],
+[data-slot="alert-dialog-overlay"] {
+  background: var(--overlay);
+}
+
 /* วัสดุกระจก (§5) — blur เฉพาะเมนู แผง การ์ด และปุ่ม */
 @layer components {
   .glass {
