@@ -1,0 +1,75 @@
+package httpx
+
+import (
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+// MaxJSONBody คือเพดานขนาด body ของ endpoint ที่รับ JSON (00-overview.md §2 ข้อ 11)
+const MaxJSONBody = 1 << 20 // 1 MB
+
+// ReadJSON อ่าน body เป็น JSON แบบเข้มงวดลงใน dst
+//   - จำกัด body 1 MB ด้วย http.MaxBytesReader
+//   - ฟิลด์ที่ไม่รู้จักถือว่าผิด (DisallowUnknownFields)
+//   - ต้องมี JSON value เดียว ห้ามมีอะไรต่อท้าย
+//
+// ถ้าผิด จะตอบ 400 validation ให้เองแล้วคืน false (handler แค่ return)
+func ReadJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, MaxJSONBody)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	err := dec.Decode(dst)
+	if err == nil {
+		// ลองอ่านต่ออีกครั้ง ต้องได้ io.EOF แปลว่าไม่มีข้อมูลต่อท้าย
+		if extra := dec.Decode(&struct{}{}); !errors.Is(extra, io.EOF) {
+			err = errTrailingData
+		}
+	}
+	if err != nil {
+		Write(w, decodeProblem(err))
+		return false
+	}
+	return true
+}
+
+var errTrailingData = errors.New("trailing data")
+
+// decodeProblem แปลง error ของ decoder เป็น problem 400
+// ใส่ errors[].field เมื่อหาชื่อฟิลด์ได้ ถ้าหาไม่ได้ให้ errors ว่างและอธิบายใน detail (00-overview.md §2 ข้อ 15)
+func decodeProblem(err error) *Problem {
+	var typeErr *json.UnmarshalTypeError
+	var syntaxErr *json.SyntaxError
+	var tooBig *http.MaxBytesError
+
+	switch {
+	case errors.Is(err, io.EOF):
+		return Validation("body ว่าง ต้องเป็น JSON")
+	case errors.As(err, &tooBig):
+		return Validation("body ใหญ่เกิน 1 MB")
+	case errors.As(err, &typeErr) && typeErr.Field != "":
+		return Validation("ชนิดข้อมูลไม่ถูกต้อง",
+			FieldError{Field: typeErr.Field, Message: "ต้องเป็น " + typeErr.Type.String()})
+	case errors.As(err, &typeErr):
+		return Validation("ชนิดข้อมูลไม่ถูกต้อง")
+	case errors.As(err, &syntaxErr), errors.Is(err, io.ErrUnexpectedEOF):
+		return Validation("JSON ไม่ถูกต้อง")
+	case errors.Is(err, errTrailingData):
+		return Validation("body ต้องมี JSON เพียงค่าเดียว")
+	}
+
+	// encoding/json ไม่มีชนิด error เฉพาะสำหรับฟิลด์ที่ไม่รู้จัก ต้องอ่านจากข้อความ
+	// รูปแบบ: json: unknown field "owner_id"
+	if rest, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
+		field, uerr := strconv.Unquote(rest)
+		if uerr != nil {
+			field = rest
+		}
+		return Validation("มีฟิลด์ที่ไม่รู้จัก", FieldError{Field: field, Message: "ไม่รู้จักฟิลด์นี้"})
+	}
+	return Validation("อ่าน JSON ไม่ได้: " + err.Error())
+}

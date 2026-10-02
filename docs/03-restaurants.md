@@ -1,0 +1,238 @@
+# 03 · จัดการร้าน รูป หมวดหมู่ พักรับจอง และค้นหา
+
+**สถานะ:** ยืนยันแล้ว 1 ต.ค. 2026
+**อ่านก่อน:** `docs/00-overview.md` (schema ตาราง `restaurants`, `categories`, `restaurant_categories`, `restaurant_images`)
+
+---
+
+## 0. วิธีใช้ไฟล์นี้
+
+- ทำตามลำดับใน §11 จบแต่ละขั้นให้หยุด สรุป อธิบายเป็นภาษาไทย แล้วรอยืนยัน
+- งานที่ติดป้าย **[B]** ทำหลังงานระดับ A ของไฟล์นี้เสร็จเท่านั้น
+
+---
+
+## 1. หลักจากโจทย์
+
+- **"ทุกคนสร้างร้านของตัวเองได้"** (สไลด์ 3): Owner คือความสัมพันธ์กับร้าน ไม่ใช่ประเภทบัญชี ผู้ใช้ทุกคนที่ login แล้วสร้างร้านได้ และสร้างได้หลายร้าน
+- **ข้อมูลร้าน** (สไลด์ 5): ชื่อ, รายละเอียด (ประเภทอาหาร ที่ตั้ง หรืออะไรก็ได้), **รูปอย่างน้อย 1 รูป**, จำนวนที่นั่ง, เวลาเปิด–ปิด
+- **แก้หรือลบได้เฉพาะร้านของตัวเอง ต้องกันที่ API** (สไลด์ 5)
+- หมวดหมู่เป็นส่วนต่อยอดของเรา (โจทย์ให้ประเภทอาหารอยู่ในรายละเอียด) และใช้กับตัวกรองในสไลด์ 10
+
+---
+
+## 2. Endpoints
+
+| Endpoint | ใครใช้ได้ | ระดับ |
+|---|---|---|
+| `GET /api/categories` | สาธารณะ | A |
+| `POST /api/restaurants` (multipart) | login | A |
+| `GET /api/restaurants/{id}` | สาธารณะ | A |
+| `PATCH /api/restaurants/{id}` ชื่อ, รายละเอียด, หมวด | Owner | A |
+| `PATCH /api/restaurants/{id}/settings` | Owner | A (สเปกอยู่ใน 01 §7.6) |
+| `POST /api/restaurants/{id}/images` (multipart) | Owner | A |
+| `DELETE /api/restaurants/{id}/images/{imageId}` | Owner | A |
+| `GET /api/restaurants/{id}/images/{imageId}` | สาธารณะ | A |
+| `DELETE /api/restaurants/{id}` | Owner | A |
+| `GET /api/me/restaurants` | login | A |
+| `PATCH /api/restaurants/{id}/booking-status` | Owner | B |
+| `GET /api/restaurants/{id}/bookings?date=` | Owner | B |
+| ตัวกรอง `q`, `category` ใน `GET /api/restaurants` | สาธารณะ | B |
+
+**ทำไมแยก `PATCH /{id}` กับ `/settings`:** ชื่อและรายละเอียดไม่กระทบการจอง ส่วนที่นั่ง เวลา และนโยบายอาจชนกับการจองเดิมจึงต้องผ่าน pipeline ตรวจ peak
+
+---
+
+## 3. กฎของข้อมูล
+
+| ฟิลด์ | กฎ (ตรวจที่ Go หลัง `strings.TrimSpace`, นับความยาวเป็น rune) |
+|---|---|
+| `name` | 1–80 ตัวอักษร ไม่ซ้ำกับร้านอื่นที่ยังไม่ถูกลบของเจ้าของคนเดียวกัน (ไม่สนตัวพิมพ์เล็กใหญ่) |
+| `description` | 1–2,000 ตัวอักษร |
+| `capacity` | จำนวนเต็ม 1–500 |
+| `open_time`, `close_time` | `"HH:MM"` ลงช่อง 30 นาที และไม่เท่ากัน (ปิด < เปิด = ข้ามเที่ยงคืน) |
+| `cancel_window_minutes` | ≥ 30 ค่าเริ่มต้น 30 |
+| `min_lead_minutes` | ≥ `cancel_window_minutes` ค่าเริ่มต้น 120 |
+| `category_ids` | 1–3 ค่า ไม่ซ้ำ และมีอยู่ในตาราง `categories` |
+| รูป | 1–3 รูปต่อร้าน · ไม่เกิน 2 MB ต่อรูป · ชนิดจาก **เนื้อไฟล์** ด้วย `http.DetectContentType` ต้องเป็น `image/jpeg`, `image/png` หรือ `image/webp` (ไม่รับ SVG) |
+| รูปปก | รูปที่ `id` น้อยที่สุดที่ยังเหลือ (ไม่มีระบบจัดลำดับ) |
+
+`owner_id` มาจาก session เท่านั้น ห้ามรับจาก body
+
+---
+
+## 4. Pipelines
+
+### 4.1 สร้างร้าน — `POST /api/restaurants`
+
+`multipart/form-data`: ฟิลด์ `data` เป็น JSON (`name`, `description`, `capacity`, `open_time`, `close_time`, `cancel_window_minutes?`, `min_lead_minutes?`, `category_ids`) + ไฟล์ `images` 1–3 ไฟล์
+
+| ขั้น | ตรวจอะไร | ถ้าไม่ผ่าน |
+|---|---|---|
+| **ก่อนเข้า transaction (อ่านและตรวจไฟล์ในหน่วยความจำให้เสร็จก่อน)** | | |
+| 1 | login แล้ว | 401 |
+| 2 | เป็น multipart และ body รวม ≤ 7 MB (`http.MaxBytesReader`, จับ `*http.MaxBytesError`) | 400 / 413 `image-too-large` |
+| 3 | `data` ถูกรูปแบบตาม §3 | 400 `validation` |
+| 4 | นโยบายร้าน (`cancel_window_minutes`, `min_lead_minutes`) | 422 `invalid-restaurant-policy` |
+| 5 | จำนวนรูป 1–3 · แต่ละรูป ≤ 2 MB · ชนิดถูกต้อง | 400 / 413 / 415 `unsupported-image-type` |
+| **ใน transaction** | | |
+| 6 | ทุก `category_id` มีอยู่จริง | 400 `validation` |
+| 7 | INSERT ร้าน, หมวด, รูป | ชน unique ชื่อ (SQLSTATE `23505`) → 409 `restaurant-name-taken` |
+| 8 | COMMIT | 201 พร้อมรายละเอียดร้าน |
+
+เรียก `r.MultipartForm.RemoveAll()` เสมอเพื่อลบไฟล์ชั่วคราว
+
+### 4.2 แก้ข้อมูลร้าน — `PATCH /api/restaurants/{id}`
+
+Body JSON ส่งครบ `name`, `description`, `category_ids`
+1. 401 / 400 ตาม §3
+2. BEGIN → `lockRestaurant` (ไม่พบหรือถูกลบ → 404)
+3. ไม่ใช่เจ้าของ → 403 `not-restaurant-owner`
+4. UPDATE ร้าน (ตั้ง `updated_at`) และแทนที่หมวดทั้งชุด (ลบแล้วเพิ่ม) · ชื่อซ้ำ → 409 `restaurant-name-taken`
+5. COMMIT → 200
+
+### 4.3 รูป
+
+**เพิ่ม — `POST /api/restaurants/{id}/images`** (multipart ไฟล์เดียวชื่อ `image`, body ≤ 3 MB)
+1. 401 → ตรวจไฟล์ (413 / 415)
+2. BEGIN → `lockRestaurant` (404) → เจ้าของ (403)
+3. **นับรูปหลังล็อก** ถ้ามี 3 แล้ว → 409 `image-limit-reached` (นับก่อนล็อกจะทำให้อัปโหลดพร้อมกันเกิน 3 ได้)
+4. INSERT → 201 `{ id }`
+
+**ลบ — `DELETE /api/restaurants/{id}/images/{imageId}`**
+1. BEGIN → `lockRestaurant` (404) → เจ้าของ (403)
+2. รูปต้องเป็นของร้านนี้ ไม่ใช่ → 404 (กันใช้ path ร้านตัวเองลบรูปร้านอื่น)
+3. เหลือรูปเดียว → 409 `last-image`
+4. DELETE → 204
+
+**ส่งรูป — `GET /api/restaurants/{id}/images/{imageId}`** (สาธารณะ)
+- ร้านถูกลบหรือรูปไม่ใช่ของร้านนี้ → 404
+- Header: `Content-Type` ตามค่าที่เก็บ, `X-Content-Type-Options: nosniff`, `Cache-Control: public, max-age=31536000, immutable` (รูปแต่ละ id ไม่เปลี่ยนเนื้อหา)
+
+### 4.4 [B] พักรับจอง — `PATCH /api/restaurants/{id}/booking-status`
+
+Body `{ "accepting_bookings": false }`
+1. 401 / 400 → BEGIN → `lockRestaurant` (404) → เจ้าของ (403)
+2. UPDATE → 200 (ส่งค่าเดิมซ้ำได้ ไม่ใช่ error)
+
+ผลต่อส่วนอื่น (กำหนดไว้แล้วใน 01): จองใหม่และแก้ไข → 409 `restaurant-not-accepting-bookings` · ยกเลิกได้ปกติ · ตั้งค่าร้านและรีวิวได้ปกติ · availability ทุกช่อง `bookable = false` · รายการร้านยังแสดงพร้อม `accepting_bookings`
+
+### 4.5 ลบร้าน — `DELETE /api/restaurants/{id}`
+
+1. 401 → BEGIN → `lockRestaurant` (ไม่พบหรือถูกลบแล้ว → 404) → เจ้าของ (403)
+2. มีการจอง `active` ที่ `end_at > now` → 409 `restaurant-has-upcoming-bookings` พร้อม `upcoming_count`, `latest_booking_end`, `accepting_bookings`
+3. `UPDATE restaurants SET deleted_at = $now, updated_at = $now` → COMMIT → 204
+
+ล็อกแถวร้านทำให้การจองที่กำลังเข้ามาไม่แทรกระหว่างตรวจกับลบ · Soft delete ทำให้ประวัติการจองของลูกค้ายังอยู่ และไม่ต้องกำหนด `ON DELETE`
+
+### 4.6 อ่านข้อมูล
+
+**รายละเอียดร้าน — `GET /api/restaurants/{id}`** (สาธารณะ, ร้านถูกลบ → 404)
+`id`, `name`, `description`, `categories`, `image_ids` (เรียงตาม id), `capacity`, `open_time`, `close_time`, `cancel_window_minutes`, `min_lead_minutes`, `accepting_bookings`, `avg_rating`, `review_count`, `is_owner`, `my_review` (`{ id, rating, comment }` หรือ `null` เมื่อยังไม่รีวิวหรือไม่ได้ login)
+`is_owner` ใช้ซ่อนหรือแสดงปุ่มในหน้าเว็บเท่านั้น สิทธิ์จริงตัดสินที่แต่ละ endpoint
+
+**ร้านของฉัน — `GET /api/me/restaurants`**
+เฉพาะร้านของผู้ใช้ที่ไม่ถูกลบ เรียง `created_at DESC, id DESC` · ฟิลด์: `id`, `name`, `cover_image_id`, `capacity`, `open_time`, `close_time`, `accepting_bookings`, `avg_rating`, `review_count`, `upcoming_count` (การจอง active ที่ `end_at > now`)
+
+**[B] การจองรายวันของร้าน — `GET /api/restaurants/{id}/bookings?date=YYYY-MM-DD`**
+เฉพาะเจ้าของ (403) · คืนการจองที่ `start_at` อยู่ในหน้าต่างเปิดร้านของวันทำการนั้น (นิยามเดียวกับ availability จึงรองรับร้านข้ามเที่ยงคืน) เรียง `start_at, id` · ฟิลด์: `id`, `start_at`, `end_at`, `party_size`, `status`, `customer_display_name` (ไม่มีอีเมล) · พร้อมสรุป `peak` และ `peak_at` ของการจอง active ในวันนั้น
+
+---
+
+## 5. Design Decisions
+
+| การตัดสินใจ | เหตุผล |
+|---|---|
+| Owner เป็นความสัมพันธ์กับร้าน ไม่มี role | สไลด์ 3: ทุกคนสร้างร้านของตัวเองได้ |
+| หมวดหมู่จากรายการกำหนดไว้ 1–3 หมวดต่อร้าน | กันคำซ้ำความหมาย ("ไทย", "อาหารไทย") และรองรับร้านที่อยู่หลายหมวด |
+| ชื่อร้านไม่ซ้ำภายในเจ้าของคนเดียว (partial unique index) | กันการกดสร้างซ้ำโดยไม่ต้องมี Idempotency-Key และสร้างชื่อเดิมได้หลังลบ |
+| รูปเก็บใน PostgreSQL (`bytea`) | สร้างร้านพร้อมรูปใน transaction เดียว ไม่มีไฟล์กำพร้า ไม่มี path traversal และกรรมการรันได้โดยไม่ต้องตั้ง volume |
+| ตรวจชนิดรูปจากเนื้อไฟล์ ไม่รับ SVG | กันไฟล์ปลอมนามสกุลและสคริปต์ที่ฝังใน SVG |
+| นับรูปหลังล็อกแถวร้าน | อัปโหลดพร้อมกันจะไม่เกิน 3 รูป |
+| Soft delete และห้ามลบถ้ามีการจองในอนาคต | ประวัติลูกค้ายังอยู่ และลูกค้าไม่มาเจอร้านที่หายไป |
+| พักรับจอง | ทางออกเมื่อร้านอยากเลิกกิจการแต่ยังมีการจองค้าง (Owner ยกเลิกการจองของลูกค้าเองไม่ได้) |
+| แสดงเฉพาะชื่อลูกค้าให้ Owner | ไม่มีอีเมลในระบบตั้งแต่ส่วนที่ 2 |
+| `ILIKE` แทน full-text search | ตัวแยกคำของ PostgreSQL ไม่ตัดคำภาษาไทย |
+
+---
+
+## 6. Seed ที่ส่วนนี้ต้องรองรับ (ทำจริงในส่วนที่ 6)
+
+- ร้านที่มีการจองล่วงหน้า (เดโมว่าลบไม่ได้), ร้านที่ไม่มีการจอง (เดโมว่าลบได้), ร้านเปิดข้ามเที่ยงคืน, ร้านที่พักรับจอง
+- รูปเป็นภาพ placeholder ที่ **สร้างด้วยโค้ด** (PNG สีพาสเทลตาม design tokens) เพื่อไม่ต้องกังวลลิขสิทธิ์
+
+---
+
+## 7. ผลต่อส่วนอื่น (ทำแล้วใน 00/01)
+
+- `lockRestaurant` กรอง `deleted_at IS NULL` และใช้ทุก pipeline ที่ล็อกร้าน
+- รายการร้าน, availability, รีวิว ซ่อนร้านที่ถูกลบ · การจองของฉันยังแสดงพร้อม `restaurant_deleted`
+- Endpoint multipart ไม่อยู่ใต้กฎบังคับ JSON ของ CSRF ชั้น 3 แต่ยังผ่านชั้น 1–2 (02 §5)
+
+---
+
+## 8. [B] ค้นหาและกรองใน `GET /api/restaurants`
+
+| พารามิเตอร์ | กติกา |
+|---|---|
+| `q` | ตัดช่องว่างหัวท้าย ยาวไม่เกิน 100 ตัวอักษร ถ้าว่างถือว่าไม่ค้น · ค้นด้วย `name ILIKE $1 OR description ILIKE $1` โดย **escape `\`, `%`, `_`** ก่อนใส่ `%…%` และใช้ parameterized query เสมอ |
+| `category` | ส่งซ้ำได้ (`?category=thai&category=seafood`) เป็น slug · หลายหมวดใช้ความหมาย **OR** · slug ที่ไม่มีอยู่ → 400 |
+| รวมกัน | `q` **AND** หมวด แล้วเรียงตาม `sort` เดิม พร้อม `id` เป็นตัวตัดสินสุดท้าย |
+
+ข้อมูลหลักร้อยร้านไม่ต้องมี index สำหรับ `ILIKE` · ถ้าจะขยายในอนาคต `pg_trgm` ต้องทดสอบกับข้อความไทยก่อน
+
+---
+
+## 9. Test
+
+| # | กรณี | คาด |
+|---|---|---|
+| W1 | สร้างร้านครบถ้วน (2 หมวด, 1 รูป) | 201 |
+| W2 | ไม่มีรูป / 4 รูป | 400 |
+| W3 | รูป 3 MB / ไฟล์ข้อความตั้งนามสกุล `.png` / SVG | 413 / 415 / 415 |
+| W4 | หมวด 0, 4, ซ้ำ, id ที่ไม่มี | 400 |
+| W5 | เปิด = ปิด, เวลาไม่ลงช่อง, capacity 0 และ 501, ชื่อว่าง / cancel 20, lead < cancel | 400 / 422 |
+| W6 | ชื่อซ้ำของเจ้าของเดิม (ต่างตัวพิมพ์หรือมีช่องว่าง) / ชื่อซ้ำของเจ้าของอื่น | 409 / 201 |
+| W7 | ส่งสร้างซ้ำพร้อมกัน 2 ครั้ง | ได้ร้านเดียว |
+| W8 | ส่ง `owner_id` มาใน `data` | 400 (ฟิลด์ที่ไม่รู้จัก) |
+| E1 | ทุก endpoint เขียนของไฟล์นี้ ด้วยผู้ใช้ที่ไม่ใช่เจ้าของ (table-driven) | 403 |
+| E2 | ร้านไม่มีอยู่ / ถูกลบแล้ว | 404 |
+| I1 | เพิ่มรูปที่ 4 | 409 |
+| I2 | ลบรูปสุดท้าย | 409 |
+| I3 | ลบรูปของร้านอื่นผ่าน path ร้านตัวเอง | 404 |
+| I4 | ส่งรูป: header `nosniff`, `Content-Type`, `Cache-Control` ถูกต้อง | ✓ |
+| D1 | ลบร้านที่มีการจอง active ในอนาคต | 409 พร้อม `upcoming_count`, `latest_booking_end` |
+| D2 | ลบร้านที่มีแต่การจองที่ยกเลิกแล้ว หรือที่จบไปแล้ว | 204 |
+| D3 | หลังลบ: รายละเอียด, รายการร้าน, รูป, จอง, รีวิว, ตั้งค่า, availability | 404 หรือไม่ปรากฏ |
+| D4 | หลังลบ: การจองในอดีตยังอยู่ในการจองของฉันพร้อม `restaurant_deleted` | ✓ |
+| D5 | สร้างร้านชื่อเดิมหลังลบ | 201 |
+| R1 | รายละเอียดร้านโดยไม่ login / `is_owner` และ `my_review` ถูกต้อง | 200 |
+| R2 | ร้านของฉัน: เฉพาะของตัวเอง ไม่รวมที่ลบ และ `upcoming_count` ถูกต้อง | ✓ |
+| P1–P3 | [B] พักรับจอง: ไม่ใช่เจ้าของ 403 · ส่งซ้ำ 200 · สถานะสะท้อนในรายละเอียดและรายการ | ✓ |
+| B1 | [B] การจองรายวัน: ร้านข้ามเที่ยงคืน, ไม่ใช่เจ้าของ 403, ค่า `peak` ถูกต้อง | ✓ |
+| Q1 | [B] ค้น "ครัว" เจอ "ครัวริมคลอง" · ค้นด้วย `%` ได้อักขระ `%` จริง · หมวด OR · `q` AND หมวด · slug ไม่มี → 400 | ✓ |
+| K5 | ลบร้านพร้อมกับ 10 คนจอง | ห้ามจบที่ร้านถูกลบทั้งที่มีการจอง active ในอนาคต |
+| K6 | เพิ่มรูปพร้อมกันตอนมี 2 รูป | สำเร็จ 1 |
+| K7 | ลบ 2 รูปที่เหลือพร้อมกัน | เหลืออย่างน้อย 1 |
+| K8 | [B] สั่งพักรับจองพร้อมกับ 20 คนจอง | หลังพักตอบ 200 แล้ว คำขอจองถัดไปได้ 409 ทุกคำขอ |
+
+---
+
+## 10. Definition of Done
+
+- [ ] test ระดับ A ทั้งหมดผ่าน รวม `-race`
+- [ ] ไม่มี query รายการใดดึง `restaurant_images.data`
+- [ ] ตาราง Design Decisions ของไฟล์นี้อยู่ใน README
+
+---
+
+## 11. ลำดับการทำงาน
+
+| ขั้น | งาน |
+|---|---|
+| 1 | `GET /api/categories`, helper multipart + ตรวจรูปใน `httpx` |
+| 2 | สร้างร้าน (4.1) + W1–W8 + K6 เตรียมไว้ |
+| 3 | รายละเอียดร้าน, ร้านของฉัน, แก้ข้อมูลร้าน (4.2, 4.6) + E1–E2, R1–R2 |
+| 4 | รูป (4.3) + I1–I4, K6–K7 |
+| 5 | ลบร้าน (4.5) + D1–D5, K5 |
+| 6 | [B] พักรับจอง, การจองรายวัน, ค้นหา + P, B1, Q1, K8 |

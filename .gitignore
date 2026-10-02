@@ -1,0 +1,5 @@
+node_modules/
+.next/
+bin/
+.env
+frontend/.env.local
