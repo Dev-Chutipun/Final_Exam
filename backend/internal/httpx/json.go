@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,7 +19,15 @@ const MaxJSONBody = 1 << 20 // 1 MB
 //   - ต้องมี JSON value เดียว ห้ามมีอะไรต่อท้าย
 //
 // ถ้าผิด จะตอบ 400 validation ให้เองแล้วคืน false (handler แค่ return)
+//
+// ต้องมี Content-Type: application/json ไม่อย่างนั้นตอบ 415 (CSRF ชั้นที่ 3 ของ 02 §5):
+// ฟอร์มหรือ fetch แบบ simple request จากเว็บอื่นส่ง application/json ข้ามโดเมนไม่ได้
+// ถ้าไม่ผ่าน CORS preflight ซึ่ง API นี้ไม่เปิดให้
 func ReadJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err != nil || mt != "application/json" {
+		Write(w, New("unsupported-media-type", "ต้องส่ง Content-Type: application/json"))
+		return false
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, MaxJSONBody)
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()

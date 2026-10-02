@@ -1,7 +1,7 @@
-// Package auth ระบุผู้ใช้ปัจจุบันของคำขอ
+// Package auth คือ login ด้วย Keycloak, session ของแอป และ CSRF (docs/02-auth.md)
 //
-// ตอนนี้มีแค่การอ่านและใส่ userID ใน context
-// middleware จริงที่อ่าน cookie session แล้วเรียก WithUserID จะมาในส่วนที่ 2 (docs/02-auth.md)
+// handler อื่นรู้จักผู้ใช้ผ่าน UserID(ctx) เท่านั้น ค่านี้ใส่โดย Handler.Middleware
+// ซึ่งอ่าน cookie session จากฐานข้อมูล
 // production code ไม่มี header หรือ query ใดๆ สำหรับสลับผู้ใช้
 package auth
 

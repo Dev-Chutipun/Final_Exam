@@ -125,6 +125,21 @@ func TestWriteError(t *testing.T) {
 	}
 }
 
+// CSRF ชั้นที่ 3: JSON endpoint ที่ได้ Content-Type อื่น → 415
+func TestReadJSONRequiresJSONContentType(t *testing.T) {
+	for _, ct := range []string{"", "text/plain", "application/x-www-form-urlencoded", "multipart/form-data; boundary=x"} {
+		req := httptest.NewRequest(http.MethodPost, "/api/x", strings.NewReader(`{"party_size": 4}`))
+		if ct != "" {
+			req.Header.Set("Content-Type", ct)
+		}
+		rec := httptest.NewRecorder()
+		var dst sample
+		if ReadJSON(rec, req, &dst) || rec.Code != 415 || !strings.Contains(rec.Body.String(), "/problems/unsupported-media-type") {
+			t.Errorf("Content-Type %q: got %d %s", ct, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestValidationAlwaysHasErrorsArray(t *testing.T) {
 	b, err := json.Marshal(Validation("x"))
 	if err != nil {
@@ -160,6 +175,7 @@ func TestReadJSON(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/api/x", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json; charset=utf-8")
 			rec := httptest.NewRecorder()
 			var dst sample
 
