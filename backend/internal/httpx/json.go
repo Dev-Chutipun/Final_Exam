@@ -29,7 +29,17 @@ func ReadJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, MaxJSONBody)
-	dec := json.NewDecoder(r.Body)
+	if err := DecodeJSON(r.Body, dst); err != nil {
+		WriteError(w, r, err)
+		return false
+	}
+	return true
+}
+
+// DecodeJSON อ่าน JSON หนึ่งค่าแบบเข้มงวดจาก rd (ใช้กับ body และฟิลด์ data ของ multipart)
+// ผิดรูปแบบ → *Problem 400 validation
+func DecodeJSON(rd io.Reader, dst any) error {
+	dec := json.NewDecoder(rd)
 	dec.DisallowUnknownFields()
 
 	err := dec.Decode(dst)
@@ -40,10 +50,9 @@ func ReadJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		}
 	}
 	if err != nil {
-		Write(w, decodeProblem(err))
-		return false
+		return decodeProblem(err)
 	}
-	return true
+	return nil
 }
 
 var errTrailingData = errors.New("trailing data")
