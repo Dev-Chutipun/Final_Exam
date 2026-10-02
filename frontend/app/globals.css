@@ -1,0 +1,202 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * Design tokens — พาสเทลกระจก (docs/05-frontend.md §5)
+ * ห้ามใช้สีนอกไฟล์นี้ · ทุกคู่ตัวอักษร/พื้นตรวจแล้วผ่าน 4.5:1
+ */
+:root {
+  /* พื้นและตัวอักษร */
+  --bg: #fbf9ff;
+  --ink: #2b2550;
+  --ink-2: #5d5880;
+  --ink-3: #6e6a8e;
+  --ink-body: #3f3a63;
+  --ink-disabled: #7c7898;
+  --focus: #8c7cf0;
+  --accent-strong: #6b5bd6;
+  --star: #ffb547;
+  --star-empty: #b9a47a;
+
+  /* พาสเทลพื้นหลัง */
+  --peach: #ffd8c8;
+  --lavender: #ded6ff;
+  --mint: #cff1e2;
+  --butter: #fff0bf;
+
+  /* ปุ่ม (ไล่สีบนลงล่าง) */
+  --btn-primary-from: #efeaff;
+  --btn-primary-to: #cfc4ff;
+  --btn-cta-from: #ffe9df;
+  --btn-cta-to: #ffc2aa;
+  --btn-cta-ink: #3b1d12;
+  --btn-danger-from: #fff0f3;
+  --btn-danger-to: #ffccd6;
+  --btn-danger-ink: #8e1b33;
+  --btn-danger-strong-from: #ffe3e9;
+  --btn-danger-strong-to: #ffa9bb;
+  --btn-danger-strong-ink: #7a1029;
+  --btn-glass-from: rgba(255, 255, 255, 0.95);
+  --btn-glass-to: rgba(255, 255, 255, 0.6);
+
+  /* ป้ายสถานะ (พื้น / ตัวอักษร) */
+  --st-mint-bg: #d7f4e6;
+  --st-mint-ink: #1e6b48; /* ยืนยันแล้ว, เปิดรับจอง */
+  --st-butter-bg: #fff1c2;
+  --st-butter-ink: #7a5200; /* เหลือน้อย, คำเตือน, หมดเวลาแก้ไข */
+  --st-peach-bg: #ffe2d6;
+  --st-peach-ink: #9a3e22; /* เจ้าของร้าน, รูปปก */
+  --st-lav-bg: #e7e1ff;
+  --st-lav-ink: #4a3da8; /* หมวดหมู่, ข้อมูล */
+  --st-pink-bg: #ffe0e7;
+  --st-pink-ink: #a1203a; /* ผิดพลาด, ลบ */
+  --st-pink-border: #ffc2cf;
+  --st-gray-bg: #eeecf5;
+  --st-gray-ink: #4b4766; /* พักรับจอง, ยกเลิกแล้ว */
+  --invalid: #d9506e;
+
+  /* วัสดุกระจก */
+  --border-glass: rgba(255, 255, 255, 0.92);
+  --overlay: rgba(43, 37, 80, 0.16);
+  --field-border: rgba(43, 37, 80, 0.14);
+
+  /* ภาพปก placeholder (ไล่สี 135° สามจุด) */
+  --cover-peach: linear-gradient(135deg, #ffe5d8 0%, #ffc7b4 50%, #faaca6 100%);
+  --cover-mint: linear-gradient(135deg, #d9f5e8 0%, #aee6d2 50%, #92d6cb 100%);
+  --cover-butter: linear-gradient(135deg, #fff5d1 0%, #ffe0a3 50%, #fac88a 100%);
+  --cover-latte: linear-gradient(135deg, #f8ebe3 0%, #ebd3c6 50%, #dcbbae 100%);
+  --cover-lilac: linear-gradient(135deg, #eee4fa 0%, #d8c5ef 50%, #c1aae0 100%);
+  --cover-sky: linear-gradient(135deg, #e2efff 0%, #c4dbfa 50%, #adc6f2 100%);
+
+  /* รูปทรง */
+  --r-field: 14px;
+  --r-btn: 16px;
+  --r-card: 28px;
+  --r-panel: 30px;
+
+  /* การแมปกับตัวแปรของ shadcn/ui (§5) */
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: rgba(255, 255, 255, 0.58);
+  --card-foreground: var(--ink);
+  --popover: rgba(255, 255, 255, 0.96);
+  --popover-foreground: var(--ink);
+  --primary: var(--btn-primary-to);
+  --primary-foreground: var(--ink);
+  --secondary: var(--st-lav-bg);
+  --secondary-foreground: var(--ink);
+  --muted: var(--st-gray-bg);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--st-lav-bg);
+  --accent-foreground: var(--ink);
+  --destructive: var(--btn-danger-to);
+  --border: var(--field-border);
+  --input: var(--field-border);
+  --ring: var(--focus);
+  --radius: 16px;
+}
+
+@theme inline {
+  --font-sans: var(--font-plex), system-ui, sans-serif;
+  --font-heading: var(--font-prompt), var(--font-plex), sans-serif;
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: 10px;
+  --radius-md: var(--r-field);
+  --radius-lg: var(--radius);
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-3xl: var(--r-card);
+  --radius-4xl: var(--r-panel);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    min-height: 100vh;
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1.55;
+    /* พื้นหลังหน้า (§5) */
+    background:
+      radial-gradient(820px 520px at 6% -4%, #ffd8c8 0%, rgba(255, 216, 200, 0) 62%),
+      radial-gradient(860px 560px at 96% 0%, #ded6ff 0%, rgba(222, 214, 255, 0) 60%),
+      radial-gradient(760px 520px at 0% 70%, #cff1e2 0%, rgba(207, 241, 226, 0) 60%),
+      radial-gradient(900px 600px at 100% 100%, #fff0bf 0%, rgba(255, 240, 191, 0) 60%),
+      var(--bg);
+    background-attachment: fixed;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-heading);
+    line-height: 1.2;
+  }
+  :focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 2px;
+  }
+}
+
+/* วัสดุกระจก (§5) — blur เฉพาะเมนู แผง การ์ด และปุ่ม */
+@layer components {
+  .glass {
+    background: rgba(255, 255, 255, 0.58);
+    border: 1px solid var(--border-glass);
+    box-shadow:
+      0 14px 40px rgba(107, 91, 214, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px) saturate(160%);
+  }
+  /* แถวในรายการยาว: พื้นขาว 70% ไม่ใส่ blur */
+  .row-plain {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+  }
+  /* ป้ายบนภาพ: ขาว 86% + blur 8px */
+  .on-image {
+    background: rgba(255, 255, 255, 0.86);
+    color: var(--ink);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(8px);
+  }
+  /* ช่องกรอก */
+  .field {
+    min-height: 48px;
+    width: 100%;
+    border: 1px solid var(--field-border);
+    border-radius: var(--r-field);
+    padding: 0 14px;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--ink);
+  }
+  .field[aria-invalid="true"] {
+    border: 2px solid var(--invalid);
+  }
+  .field:disabled {
+    background: rgba(255, 255, 255, 0.45);
+    color: var(--ink-disabled);
+  }
+}
