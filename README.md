@@ -1,8 +1,99 @@
 # DevPool Final Exam — ระบบจองโต๊ะร้านอาหารและรีวิวร้าน
 
-Next.js 16 · Go 1.26 · PostgreSQL · Keycloak
+ผู้ใช้ทุกคนเป็นได้ทั้งลูกค้าและเจ้าของร้าน: สร้างร้าน (ชื่อ รายละเอียด รูป 1–3 รูป หมวด ที่นั่ง เวลาเปิด–ปิด) จองโต๊ะแบบนับที่นั่งเป็นช่วงเวลา 30 นาที แก้ไข/ยกเลิกก่อน deadline และรีวิวร้านของคนอื่น รายการร้านเรียงด้วยคะแนนแบบ Bayesian
 
-> README ฉบับเต็ม (วิธีรันตั้งแต่ clone, บัญชีทดสอบ, Requirements, Future work) จะเติมในส่วนที่ 6
+| ส่วน | เทคโนโลยี |
+|---|---|
+| หน้าเว็บ | Next.js 16 (App Router, Turbopack), Tailwind CSS 4, shadcn/ui |
+| API | Go 1.26 (`net/http` ServeMux, ไม่ใช้ framework), `pgx/v5` + SQL ที่เขียนเอง |
+| ฐานข้อมูล | PostgreSQL 17 |
+| Login | Keycloak 26.8 (OIDC) — Go เป็น confidential client แล้วสร้าง session ของแอปเอง |
+
+```
+browser ──► Next.js :3000 ──rewrite /api/*──► Go API :8080 ──► PostgreSQL :5432
+                │ Server Component อ่านข้อมูล (ส่งต่อ cookie)        │
+                └──────────────────────────────────────────────────► Keycloak :8081 (login)
+```
+
+## วิธีรันตั้งแต่ clone
+
+**ต้องมี:** Git, Docker (Docker Desktop หรือ Rancher Desktop แบบ dockerd), Go 1.26.5 ขึ้นไป, Node.js 20.9 ขึ้นไป · พอร์ต 3000, 5432, 8080, 8081 ต้องว่าง
+
+```powershell
+git clone <repo> devpool; cd devpool
+Copy-Item .env.example .env                       # ค่าสำหรับ Go (ใช้บนเครื่องเท่านั้น)
+Copy-Item frontend/.env.example frontend/.env.local
+
+docker compose up -d                              # postgres + keycloak (keycloak ใช้เวลาเริ่มราว 30 วินาที)
+
+cd backend
+go run ./cmd/migrate                              # สร้างตาราง (รันซ้ำได้)
+go run ./cmd/seed                                 # ข้อมูลตัวอย่างอิงเวลาปัจจุบัน (-reset เพื่อล้างแล้วใส่ใหม่)
+go run ./cmd/api                                  # API ที่ :8080 (ต้องรันบนเครื่อง ไม่รันใน Docker)
+
+# อีกหน้าต่างหนึ่ง
+cd frontend
+npm ci
+npm run dev                                       # เปิด http://localhost:3000
+```
+
+> Go ต้องรันบนเครื่องโดยตรง เพราะค่า `iss` ใน token ขึ้นกับ hostname ที่ใช้เรียก Keycloak: เบราว์เซอร์และ Go ต้องเรียก `localhost:8081` เหมือนกัน
+> ถ้า Keycloak ยังไม่พร้อม `cmd/api` จะหยุดพร้อมข้อความ "ต่อ Keycloak ไม่ได้" ให้รอสักครู่แล้วรันใหม่
+
+## บัญชีทดสอบ
+
+| username | รหัสผ่าน | บทบาทในข้อมูลตัวอย่าง |
+|---|---|---|
+| `alice` | `devpool-2026` | เจ้าของ "ครัวริมคลอง" (มีการจองล่วงหน้า ลบไม่ได้) และ "ซูชิบาร์ ท่าเรือ" (ไม่มีการจอง ลบได้) · ลูกค้าร้านอื่น |
+| `bob` | `devpool-2026` | เจ้าของ "ฟอเฮ้าส์ ซอยสาม" และ "สเต็กลุงพล" (เปิด 17:00–02:00 ข้ามเที่ยงคืน) · ลูกค้าครัวริมคลอง |
+| `carol` | `devpool-2026` | เจ้าของ "เฮือนอีสานบ้านเฮา" และ "ใบชา คาเฟ่" (พักรับจอง) · ลูกค้าและผู้รีวิว |
+
+- สมัครสมาชิกใหม่ได้จากลิงก์ Register ในหน้า login ของ Keycloak
+- ผู้รีวิวตัวอย่างอื่น (ดนัย, มาลี, พิม, กฤต) มีเฉพาะในฐานข้อมูล (`issuer = seed://local`) และ login ไม่ได้
+- Keycloak admin console: http://localhost:8081 · `admin` / `admin`
+
+> **ข้อยกเว้นเรื่อง secret:** `OIDC_CLIENT_SECRET` (`devpool-local-secret`), รหัสผ่านบัญชีทดสอบ และรหัส admin ของ Keycloak อยู่ใน repo (`.env.example`, `keycloak/realm-devpool.json`, `docker-compose.yml`) เพราะใช้บนเครื่องเท่านั้น ห้ามใช้ค่าเหล่านี้ใน production
+
+## Requirements (สิ่งที่ทำตามโจทย์)
+
+| สไลด์ | ข้อกำหนด | ทำอย่างไร |
+|---|---|---|
+| 3 | ทุกคนสร้างร้านของตัวเองได้ / เจ้าของจองร้านตัวเองไม่ได้ | Owner เป็นความสัมพันธ์กับร้าน ไม่มี role · `403 own-restaurant-booking` |
+| 4 | กติกาธุรกิจต้องตรวจที่เซิร์ฟเวอร์ | ทุกกติกาตรวจที่ Go หน้าเว็บตรวจเพื่อ UX เท่านั้น · constraint ใน DB เป็นชั้นที่สอง |
+| 5 | ร้านมีชื่อ รายละเอียด รูปอย่างน้อย 1 รูป ที่นั่ง เวลาเปิด–ปิด · แก้/ลบได้เฉพาะร้านตัวเองโดยกันที่ API · สมัครสมาชิกได้ | `POST /api/restaurants` (multipart) · ตรวจเจ้าของหลัง `lockRestaurant` ทุก endpoint · Keycloak เปิด registration |
+| 5 | นับเป็นที่นั่ง ไม่แยกโต๊ะ | `capacity` ทั้งร้าน |
+| 7 | ที่นั่งต้องพอตลอดช่วงที่จอง และต้องจริงตลอดเวลา | `MaxLoad` ตรวจ peak ในช่วงแบบ half-open · `PeakAll` ตรวจเมื่อเจ้าของลดที่นั่ง · differential test 10,000 ชุด |
+| 8 | แก้ไขการจองต้องไม่นับที่นั่งเดิมซ้ำ · ยกเลิกได้ถึง 30 นาทีก่อน (นับรวมเวลาพอดี) | ตัดการจองนี้ออก (`id <> $bookingID`) · deadline บันทึกตอนจอง |
+| 9 | รีวิว 1–5 ดาว รีวิวร้านตัวเองไม่ได้ | 1 คน 1 รีวิวต่อร้านด้วย unique constraint · `403 own-restaurant-review` |
+| 10 | แสดงที่ว่างรายช่วงและ Limited Seats Left · ค้นหา/กรอง | availability ทีละ 30 นาที `limited` เมื่อเหลือ ≤ 30% · [B] ค้นชื่อ + กรองหมวด |
+| 11 | จองพร้อมกันต้องไม่เกินที่นั่ง · เรียงตามคะแนน | ล็อกแถวร้าน + Read Committed (test `-race -count=100`) · Bayesian average |
+| 13 | อธิบายการแบ่ง Server/Client Component | Server Component อ่าน, Client Component ส่งผ่าน `/api/*` แล้ว `router.refresh()` |
+
+## วิธีรัน test
+
+```powershell
+cd backend
+go test -p 1 ./...                 # test ทั้งหมดบน Windows (ต้อง docker compose up -d ก่อน ใช้ฐาน devpool_test)
+cd ..
+./scripts/test-race.ps1            # test ทั้งหมดแบบ -race ใน container golang
+./scripts/test-race.ps1 -Concurrent   # เฉพาะ TestConcurrent* แบบ -count=100 -race
+
+cd frontend
+npm run lint                       # ESLint
+npm run build                      # type check + build
+```
+
+- integration test ใช้ฐาน `TEST_DATABASE_URL` ถ้าไม่ได้ตั้งจะถูกข้าม · `-p 1` กันไม่ให้หลาย package ล้างฐานข้อมูลชนกัน
+- ห้ามรัน `go test` บนเครื่องพร้อมกับ `test-race.ps1` เพราะใช้ฐาน test เดียวกัน
+- หลังแก้ `.env` ใส่ `-count=1` เพื่อไม่ใช้ผลจาก cache
+
+## Future work (ระดับ C ที่ไม่ได้ทำ)
+
+- Login ด้วย Google (เพิ่ม Identity Provider ใน Keycloak ได้โดยไม่แก้โค้ด)
+- `Idempotency-Key` สำหรับคำขอจอง
+- กรองร้านตามช่วงเวลาที่ยังว่าง
+- สั่งอาหารล่วงหน้า
+- โหมดจองแบบโต๊ะ (แยกโต๊ะแทนการนับที่นั่ง)
 
 ## Design Decisions
 
