@@ -18,6 +18,20 @@ services:
     networks:
       - devpool-net
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0
+    command: start-dev --import-realm
+    environment:
+      # บัญชี admin ของ Keycloak ใช้บนเครื่องเท่านั้น
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    networks:
+      - devpool-net
+
 volumes:
   pgdata:
 
