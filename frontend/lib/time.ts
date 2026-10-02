@@ -92,6 +92,12 @@ export function splitApiTime(iso: string): { date: string; hhmm: string } {
   return { date: localDate(iso), hhmm: formatTime(iso) };
 }
 
+/** ตัวเลือกเวลาเปิด–ปิดร้านทีละ 30 นาที: "00:00", "00:30", …, "23:30" */
+export function halfHours(): string[] {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return Array.from({ length: 48 }, (_, i) => `${pad(Math.floor(i / 2))}:${i % 2 ? "30" : "00"}`);
+}
+
 /** "120 นาที" → "2 ชั่วโมง", "90" → "1 ชั่วโมง 30 นาที" */
 export function formatMinutes(min: number): string {
   const h = Math.floor(min / 60);
