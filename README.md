@@ -16,6 +16,7 @@ browser ──► Next.js :3000 ──rewrite /api/*──► Go API :8080 ─�
 ```
 
 สถาปัตยกรรม (quality attributes, C4, จุดยาก, 12-Factor, ทางโตระดับประเทศ) อยู่ที่ [docs/architecture.md](docs/architecture.md) และ ADR ใน [docs/adr/](docs/adr/)
+· สเปก API ทั้ง 26 endpoint (OpenAPI 3.1) อยู่ที่ [docs/openapi.yaml](docs/openapi.yaml) เปิดดูได้ด้วย Swagger Editor หรือ `npx @redocly/cli preview-docs docs/openapi.yaml`
 
 ## วิธีรันตั้งแต่ clone
 

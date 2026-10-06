@@ -46,7 +46,7 @@ flowchart TB
 | Container | ความรับผิดชอบ | หมายเหตุ |
 |---|---|---|
 | Web App | หน้าเว็บทั้งหมด, ส่งคำขอต่อให้ API | ไม่มี `proxy.ts` และไม่ตัดสินกติกาเอง ([ADR-0004](adr/0004-modular-monolith.md)) |
-| Core API | กติกาธุรกิจทั้งหมด, สิทธิ์, session, CSRF | 26 endpoint ใต้ `/api` · error เป็น `application/problem+json` |
+| Core API | กติกาธุรกิจทั้งหมด, สิทธิ์, session, CSRF | 26 endpoint ใต้ `/api` ([openapi.yaml](openapi.yaml)) · error เป็น `application/problem+json` |
 | PostgreSQL | แหล่งความจริงเดียว | รูปเก็บเป็น `bytea` ([ADR-0003](adr/0003-images-in-postgres.md)) |
 | Keycloak | ยืนยันตัวตนอย่างเดียว | Go เป็น confidential client, หลัง login ไม่ใช้ token ของ Keycloak อีก |
 
