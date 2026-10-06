@@ -116,7 +116,7 @@ sequenceDiagram
 | VI Processes | ✅ | **stateless:** session อยู่ใน DB, รูปอยู่ใน DB, state ของ login อยู่ใน cookie ที่ใช้ครั้งเดียว |
 | VII Port binding | ✅ | `PORT` จาก env |
 | VIII Concurrency | ✅ | scale API เป็นหลายตัวได้ เพราะความถูกต้องของที่นั่งอยู่ที่ lock ใน DB |
-| IX Disposability | ⚠️ | เริ่มเร็ว แต่ยังไม่มี graceful shutdown เมื่อได้ SIGTERM (`http.ListenAndServe` ตรง) — ต้องเพิ่มก่อนขึ้น Stage 2 |
+| IX Disposability | ✅ | เริ่มเร็ว · ได้ Ctrl+C/SIGTERM แล้วหยุดรับคำขอใหม่ รอคำขอค้างจบไม่เกิน 10 วินาที (`http.Server.Shutdown` ใน `cmd/api`) |
 | X Dev/prod parity | ✅ | dev และ test ใช้ PostgreSQL ตัวเดียวกับ production (ไม่ใช้ SQLite แทน) |
 | XI Logs | ✅ | `log` ออก stdout |
 | XII Admin processes | ✅ | `cmd/migrate`, `cmd/seed` เป็นคำสั่งที่รันครั้งเดียว |
@@ -161,7 +161,7 @@ flowchart TB
 
 | เมื่อ… | เพิ่ม | กระทบโค้ดตอนนี้ |
 |---|---|---|
-| API เครื่องเดียว CPU เต็ม / ต้อง deploy ไม่ล่ม | LB + Core API หลายตัว, health check, graceful shutdown | **ไม่ต้องแก้ logic** เพราะ stateless อยู่แล้ว · เพิ่ม `/healthz` และ shutdown ใน `cmd/api` |
+| API เครื่องเดียว CPU เต็ม / ต้อง deploy ไม่ล่ม | LB + Core API หลายตัว, health check | **ไม่ต้องแก้ logic** เพราะ stateless อยู่แล้ว และมี graceful shutdown แล้ว · เพิ่ม `/healthz` ที่ ping DB |
 | มีคนยิงคำขอถี่ผิดปกติ | rate limit ที่ gateway (เช่น nginx `limit_req`) | ไม่แตะโค้ด |
 | การอ่านกดดัน primary | read replica สำหรับ availability และรายการร้าน | availability เป็นแค่ "คำแนะนำ" อยู่แล้ว อ่านจาก replica ได้ · **การจองยังต้องไป primary** เพราะต้องล็อก |
 | replica ยังไม่พอ | Redis cache-aside (ที่ว่าง TTL ~30 วิ, รายการร้าน) | ที่ว่างอาจช้ากว่าความจริงไม่กี่วินาทีได้ เพราะ transaction ของการจองตัดสินซ้ำเสมอ |

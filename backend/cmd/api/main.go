@@ -6,8 +6,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	_ "time/tzdata" // ฝังฐานข้อมูล timezone เพื่อโหลด Asia/Bangkok ได้แม้เครื่องไม่มี
@@ -72,6 +76,25 @@ func main() {
 	}
 
 	port := env("PORT")
-	log.Printf("API ฟังที่ :%s · issuer %s", port, env("OIDC_ISSUER"))
-	log.Fatal(http.ListenAndServe(":"+port, handler))
+	srv := &http.Server{Addr: ":" + port, Handler: handler}
+
+	// 12-Factor IX (Disposability): เมื่อได้ Ctrl+C หรือ SIGTERM ให้หยุดรับคำขอใหม่
+	// แล้วรอคำขอที่ค้างอยู่ (เช่น transaction การจอง) ทำให้จบก่อนปิด ไม่ตัดกลางทาง
+	stopCtx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		log.Printf("API ฟังที่ :%s · issuer %s", port, env("OIDC_ISSUER"))
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal(err)
+		}
+	}()
+
+	<-stopCtx.Done()
+	log.Print("กำลังปิด API: รอคำขอที่ค้างอยู่ไม่เกิน 10 วินาที")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("ปิดไม่ทันเวลา: %v", err)
+	}
+	log.Print("ปิด API เรียบร้อย")
 }
