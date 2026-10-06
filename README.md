@@ -15,6 +15,8 @@ browser ──► Next.js :3000 ──rewrite /api/*──► Go API :8080 ─�
                 └──────────────────────────────────────────────────► Keycloak :8081 (login)
 ```
 
+สถาปัตยกรรม (quality attributes, C4, จุดยาก, 12-Factor, ทางโตระดับประเทศ) อยู่ที่ [docs/architecture.md](docs/architecture.md) และ ADR ใน [docs/adr/](docs/adr/)
+
 ## วิธีรันตั้งแต่ clone
 
 **ต้องมี:** Git, Docker (Docker Desktop หรือ Rancher Desktop แบบ dockerd), Go 1.26.5 ขึ้นไป, Node.js 20.9 ขึ้นไป · พอร์ต 3000, 5432, 8080, 8081 ต้องว่าง
