@@ -21,7 +21,7 @@ browser ──► Next.js :3000 ──rewrite /api/*──► Go API :8080 ─�
 
 ## วิธีรันตั้งแต่ clone
 
-**ต้องมี:** Git, Docker (Docker Desktop หรือ Rancher Desktop แบบ dockerd), Go 1.26.5 ขึ้นไป, Node.js 20.9 ขึ้นไป · พอร์ต 3000, 5432, 8080, 8081 ต้องว่าง
+**ต้องมี:** Git, Docker (Docker Desktop หรือ Rancher Desktop แบบ dockerd), Go 1.26.6 ขึ้นไป, Node.js 20.9 ขึ้นไป · พอร์ต 3000, 5432, 8080, 8081 ต้องว่าง
 
 ```powershell
 git clone <repo> devpool; cd devpool
@@ -41,6 +41,11 @@ npm ci
 npm run dev                                       # เปิด http://localhost:3000
 ```
 
+**หมายเหตุสำหรับ Windows**
+- รันทุกคำสั่งใน **Windows PowerShell** ไม่ใช่ WSL/Ubuntu เพราะ `node_modules` ที่ติดตั้งจาก Windows ใช้ไบนารีของ Windows (รันใน WSL จะเจอ `Cannot find module '../lightningcss.linux-x64-gnu.node'`)
+- ถ้าเครื่องปิดการรันสคริปต์ (`npm.ps1 cannot be loaded`) ใช้ `npm.cmd ci` / `npm.cmd run dev` และรันสคริปต์ด้วย `powershell -ExecutionPolicy Bypass -File .\scripts\test-race.ps1` หรือตั้งครั้งเดียว `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+- Docker บน WSL2 ต้องเปิด Virtualization (VT-x/AMD-V) ใน BIOS ไม่อย่างนั้น Docker Desktop/Rancher Desktop จะเริ่มไม่ได้
+
 > Go ต้องรันบนเครื่องโดยตรง เพราะค่า `iss` ใน token ขึ้นกับ hostname ที่ใช้เรียก Keycloak: เบราว์เซอร์และ Go ต้องเรียก `localhost:8081` เหมือนกัน
 > ถ้า Keycloak ยังไม่พร้อม `cmd/api` จะหยุดพร้อมข้อความ "ต่อ Keycloak ไม่ได้" ให้รอสักครู่แล้วรันใหม่
 
@@ -57,6 +62,7 @@ npm run dev                                       # เปิด http://localhos
 - Keycloak admin console: http://localhost:8081 · `admin` / `admin`
 
 > **ข้อยกเว้นเรื่อง secret:** `OIDC_CLIENT_SECRET` (`devpool-local-secret`), รหัสผ่านบัญชีทดสอบ และรหัส admin ของ Keycloak อยู่ใน repo (`.env.example`, `keycloak/realm-devpool.json`, `docker-compose.yml`) เพราะใช้บนเครื่องเท่านั้น ห้ามใช้ค่าเหล่านี้ใน production
+> ค่าเริ่มต้น `COOKIE_SECURE=false` ใช้ได้เพราะรันผ่าน `http://localhost` เท่านั้น ถ้าเปิดผ่าน HTTPS ต้องตั้งเป็น `true` เพื่อให้ cookie `session` ส่งผ่าน HTTPS อย่างเดียว
 
 ## Requirements (สิ่งที่ทำตามโจทย์)
 

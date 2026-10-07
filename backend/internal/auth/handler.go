@@ -71,9 +71,16 @@ func hashToken(token string) []byte {
 
 // SafeReturnTo กัน open redirect: ต้องขึ้นต้นด้วย / และตัวที่สองต้องไม่ใช่ / หรือ \ ไม่อย่างนั้นใช้ /
 // ("//evil.com" และ "/\evil.com" เบราว์เซอร์ตีความเป็นโดเมนอื่น)
+// และต้องไม่มีอักขระควบคุมหรือช่องว่าง เพราะเบราว์เซอร์ตัด tab/CR/LF ออกจาก URL
+// ทำให้ "/\t/evil.com" กลายเป็น "//evil.com" ผ่านการตรวจตัวที่สองไปได้
 func SafeReturnTo(s string) string {
 	if !strings.HasPrefix(s, "/") || (len(s) > 1 && (s[1] == '/' || s[1] == '\\')) {
 		return "/"
+	}
+	for _, c := range s {
+		if c <= ' ' || c == 0x7f {
+			return "/"
+		}
 	}
 	return s
 }

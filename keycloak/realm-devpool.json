@@ -4,6 +4,7 @@
   "registrationAllowed": true,
   "verifyEmail": false,
   "bruteForceProtected": true,
+  "passwordPolicy": "length(8) and notUsername",
   "clients": [
     {
       "clientId": "devpool-web",

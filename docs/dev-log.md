@@ -17,7 +17,7 @@
 | ทดสอบในเบราว์เซอร์ (13 ข้อ) | ✅ ผู้ใช้ทดสอบครบ ไม่มีข้อไม่ผ่าน |
 | เอกสารสถาปัตยกรรม + ADR + OpenAPI | ✅ เสร็จ |
 | Push ขึ้น GitHub | ✅ https://github.com/Dev-Chutipun/Final_Exam |
-| **แก้ผลรีวิวความพร้อม** (§9) | ⏳ **ยังไม่ได้แก้** — มีช่องโหว่ open redirect และ dependency ที่ต้องอัปเดต |
+| แก้ผลรีวิวความพร้อม (§9) | ✅ แก้แล้ว 10 ข้อ (8 ต.ค.) · `govulncheck` และ `npm audit --omit=dev` สะอาด |
 | Checkpoint A, B | ✅ ทำแล้ว (มีจุดที่ต้องทวน §8) |
 | Checkpoint C | ⏳ ตั้งคำถามแล้ว รอคำตอบ |
 | Checkpoint D, E | ⏳ ยังไม่ได้ทำ |
@@ -52,6 +52,8 @@
 | `e00ab5b` | `docs/architecture.md` + ADR 0001–0004 |
 | `1da4319` | Graceful shutdown (12-Factor IX) |
 | `febe4bf` | `docs/openapi.yaml` (OpenAPI 3.1, 26 endpoint) |
+| `2916b05` | `docs/dev-log.md` (ไฟล์นี้) |
+| (ถัดไป) | แก้ผลรีวิวความพร้อม §9: open redirect, Go 1.26.6 + x/text, 404 problem+json, timeout, global error, security headers, password policy, README |
 
 ---
 
@@ -190,31 +192,35 @@ rewrite ส่ง 302 + Set-Cookie ได้, logout ไม่มีหน้า
 
 ---
 
-## 9. รีวิวความพร้อม (7 ต.ค. 2026) — ⏳ ยังไม่ได้แก้
+## 9. รีวิวความพร้อม (ตรวจ 7 ต.ค. · แก้ 8 ต.ค. 2026)
 
-ตรวจด้วย grep กติกา, test พิสูจน์ช่องโหว่, `govulncheck` และ `npm audit`
+ตรวจด้วย grep กติกา, test พิสูจน์ช่องโหว่, `govulncheck` และ `npm audit` · ลูน่าตรวจซ้ำเมื่อ 8 ต.ค. ยืนยันว่ายังอยู่ทุกข้อก่อนแก้
 
-| ระดับ | # | จุด | รายละเอียด / วิธีแก้ |
+| ระดับ | # | จุด | สถานะ / วิธีแก้ |
 |---|---|---|---|
-| 🔴 | 1 | **Open redirect หลัง login** | `return_to=/%09/evil.com` ผ่าน `SafeReturnTo` และได้ `Location: /\t/evil.com` เบราว์เซอร์ตัด tab → `//evil.com` (ยืนยันด้วย test แล้ว) · แก้: ปฏิเสธอักขระควบคุม/ช่องว่าง + test |
-| 🔴 | 2 | Dependency ฝั่ง Go มีช่องโหว่ 7 รายการ | standard library ของ Go 1.26.5 (แก้ใน 1.26.6) และ `golang.org/x/text` v0.29.0 (แก้ใน v0.39.0) |
-| 🟡 | 3 | route ที่ไม่มีอยู่ตอบ `text/plain` | `GET /api/nope` → `404 page not found` ขัด 00 §5 · แก้: handler ดักทุก path ใต้ `/api/` |
-| 🟡 | 4 | `http.Server` ไม่มี timeout | เสี่ยง slowloris · แก้: `ReadHeaderTimeout: 10 * time.Second` |
-| 🟡 | 5 | ไม่มี `app/global-error.tsx` | ถ้า API ล่ม header ใน root layout error ทั้งเว็บ · แก้: header ทนต่อ API ล่ม หรือเพิ่ม global-error |
-| 🟢 | 6 | `npm audit` high 7 รายการ | มาจากแพ็กเกจ CLI `shadcn` ไม่กระทบตอนรัน · แก้: ย้ายไป `devDependencies` |
-| 🟢 | 7 | ไม่มี security header | clickjacking · แก้: `headers()` ใน `next.config.ts` |
-| 🟢 | 8 | ไม่จำกัดจำนวนการจองต่อคน | สเปกไม่ได้กำหนด เขียนไว้เป็นแผน Stage 2 (rate limit) |
-| 🟢 | 9 | Keycloak สมัครได้โดยไม่มีกฎรหัสผ่าน | เพิ่ม `passwordPolicy` ในไฟล์ realm |
-| 🟢 | 10 | `id_token` เก็บใน DB แบบไม่ hash | ใช้แค่ตอน logout หมดอายุเร็ว ยอมรับได้ |
-| 🟢 | 11 | `COOKIE_SECURE=false` | ถูกสำหรับรันบนเครื่อง ควรเขียนใน README ว่า HTTPS ต้องเป็น `true` |
-| 📋 | 12 | ข้อมูล seed เก่า | รัน `go run ./cmd/seed -reset` ก่อนอัดวิดีโอ |
-| 📋 | 13 | README ยังไม่บอกเรื่อง `npm.cmd`, ExecutionPolicy, ห้ามใช้ WSL | เพิ่มในหัวข้อวิธีรัน |
-| 📋 | 14 | repo ไม่สะอาด | `01/` ยังไม่ track · `frontend/next-env.d.ts` ถูกแก้ (line ending) |
+| 🔴 | 1 | **Open redirect หลัง login** — `return_to=/%09/evil.com` ได้ `Location: /\t/evil.com` เบราว์เซอร์ตัด tab → `//evil.com` | ✅ `SafeReturnTo` ปฏิเสธอักขระควบคุมและช่องว่าง · test ใหม่ 7 กรณี**พังกับโค้ดเดิมก่อน**แล้วผ่านหลังแก้ · ทดสอบ login จริง: `/%09/evil.com` → `/` |
+| 🔴 | 2 | Dependency ฝั่ง Go มีช่องโหว่ 7 รายการ | ✅ Go 1.26.5 → **1.26.6** (`go.mod`, image `golang:1.26.6`) · `golang.org/x/text` v0.29.0 → **v0.42.0** (ระหว่างแก้พบช่องโหว่ใหม่ GO-2026-6629 ใน v0.39.0 จึงขึ้นเป็นรุ่นล่าสุด) · `govulncheck`: **No vulnerabilities found** |
+| 🟡 | 3 | route ที่ไม่มีอยู่ตอบ `text/plain` | ✅ `mux.HandleFunc("/api/", httpx.NotFound)` → 404 `/problems/not-found` (รวม method ที่ไม่รองรับ) · มี test |
+| 🟡 | 4 | `http.Server` ไม่มี timeout | ✅ `ReadHeaderTimeout: 10 * time.Second` |
+| 🟡 | 5 | ถ้า API ล่ม ทั้งเว็บพัง | ✅ header จับ error แล้วแสดงป้าย "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" แต่ละหน้าใช้ `error.tsx` ของตัวเอง · เพิ่ม `app/global-error.tsx` · ทดสอบโดยปิด API: หน้าเว็บตอบ 200 พร้อมป้าย |
+| 🟢 | 6 | `npm audit` high 7 รายการ (มาจาก `shadcn` CLI) | ✅ ย้าย `shadcn` ไป `devDependencies` · `npm audit --omit=dev`: **found 0 vulnerabilities** |
+| 🟢 | 7 | ไม่มี security header | ✅ `next.config.ts` ส่ง `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff`, `Referrer-Policy` ทุกหน้า |
+| 🟢 | 8 | ไม่จำกัดจำนวนการจองต่อคน | ⏸ ไม่แก้ สเปกไม่ได้กำหนด เป็นแผน Stage 2 (rate limit) ใน architecture.md |
+| 🟢 | 9 | Keycloak สมัครได้โดยไม่มีกฎรหัสผ่าน | ✅ `passwordPolicy: length(8) and notUsername` · สร้าง container Keycloak ใหม่ให้ import realm แล้วยืนยันผ่าน Admin API |
+| 🟢 | 10 | `id_token` เก็บใน DB แบบไม่ hash | ⏸ ยอมรับ ใช้แค่ตอน logout และหมดอายุเร็ว |
+| 🟢 | 11 | `COOKIE_SECURE=false` | ✅ README อธิบายว่าใช้ได้เพราะเป็น localhost ถ้า HTTPS ต้องเป็น `true` |
+| 📋 | 12 | ข้อมูล seed เก่า | ⏳ รัน `go run ./cmd/seed -reset` ก่อนอัดวิดีโอ |
+| 📋 | 13 | README ไม่บอกเรื่อง Windows | ✅ เพิ่มหมายเหตุ: ใช้ PowerShell ไม่ใช่ WSL, `npm.cmd`/ExecutionPolicy, เปิด VT-x |
+| 📋 | 14 | repo ไม่สะอาด | ⏳ `01/` ยังไม่ track (ผู้ใช้ให้ปล่อยไว้) · `frontend/next-env.d.ts` ต่างแค่ line ending |
+
+**ผลทดสอบหลังแก้:** `go test -p 1 -count=1 ./...` ผ่าน · `test-race.ps1` (golang:1.26.6) ผ่าน · `-Concurrent -count=100` ผ่าน ·
+`npm run lint` / `npm run build` ผ่าน · ทดสอบผ่าน Next + Keycloak จริง: header ความปลอดภัยมาครบ, route ที่ไม่มีอยู่ได้ problem+json, login ยังใช้ได้
 
 **ตรวจแล้วไม่มีปัญหา:** SQL injection, IDOR (สิทธิ์ครบทุก endpoint), CSRF 3 ชั้น, การตรวจชนิดรูป, ไม่มี `.env` ใน git,
 ไม่มี `toISOString` / `proxy.ts` / Server Actions / `time.Now()` ใน service / Repeatable Read / ดึง `restaurant_images.data` ในรายการ / ใช้ header `Host` / สีนอก token
 
-แผนที่แนะนำ: แก้ข้อ 1–7, 9, 11, 13 ในรอบเดียว (ข้อ 1 เขียน test ที่พังก่อนตามกฎ) แล้วรัน test ทั้งหมด + `-race` + lint + build ใหม่
+**ปัญหาสภาพแวดล้อมที่เจอระหว่างแก้:** mount ไดรฟ์ E: ของ Rancher Desktop เสียอีกครั้ง (ทั้งที่ไม่ได้ใช้ WSL) ทำให้ Keycloak start ไม่ขึ้น
+แก้ด้วย `rdctl shutdown` → `wsl --shutdown` → `rdctl start` → `docker compose up -d` (ข้อมูล postgres ไม่หาย)
 
 ---
 
@@ -268,7 +274,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\test-race.ps1 -Concurrent
 
 ## 12. สิ่งที่ยังค้าง
 
-1. แก้ผลรีวิวความพร้อม §9 (อย่างน้อยข้อ 1–2) แล้ว push
+1. ~~แก้ผลรีวิวความพร้อม §9~~ ✅ เสร็จ 8 ต.ค.
 2. ตอบ Checkpoint C · ทำ Checkpoint D, E · ทวนจุดที่ขาดของ A และ B
 3. `go run ./cmd/seed -reset` แล้วอัดวิดีโอ ≤ 5 นาที (10 ต.ค.)
 4. ตัดสินใจเรื่องโฟลเดอร์ `01/` (`.gitignore` หรือย้ายออก)

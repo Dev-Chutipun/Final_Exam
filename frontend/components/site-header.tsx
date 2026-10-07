@@ -8,7 +8,15 @@ import { Button } from "@/components/ui/button";
 import { getMe } from "@/lib/api-server";
 
 export async function SiteHeader() {
-  const me = await getMe();
+  // header อยู่ใน root layout: ถ้าเรียก API ไม่ได้ (Go ไม่ได้รัน/ล่ม) อย่าให้ทั้งเว็บพัง
+  // แสดงเหมือนยังไม่ login พร้อมป้ายเตือน แล้วให้แต่ละหน้าแสดง error.tsx ของตัวเอง
+  let me: Awaited<ReturnType<typeof getMe>> = null;
+  let apiDown = false;
+  try {
+    me = await getMe();
+  } catch {
+    apiDown = true;
+  }
 
   return (
     <div className="px-4 pt-4 sm:px-6">
@@ -26,6 +34,12 @@ export async function SiteHeader() {
         </Link>
 
         <NavLinks loggedIn={me !== null} />
+
+        {apiDown && (
+          <span role="status" className="rounded-full bg-(--st-butter-bg) px-3 py-1 text-[13px] font-semibold text-(--st-butter-ink)">
+            เชื่อมต่อเซิร์ฟเวอร์ไม่ได้
+          </span>
+        )}
 
         {me ? (
           <div className="flex items-center gap-2.5">

@@ -142,6 +142,12 @@ func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	Write(w, New("internal-error", ""))
 }
 
+// NotFound ใช้ลงทะเบียนเป็น "/api/" เพื่อดักทุก path ที่ไม่ตรงกับ route ใด
+// (รวม method ที่ไม่รองรับ) ให้ตอบเป็น problem+json แทน text/plain ของ ServeMux
+func NotFound(w http.ResponseWriter, r *http.Request) {
+	Write(w, New("not-found", "ไม่พบ endpoint นี้"))
+}
+
 // WriteJSON ตอบ JSON ปกติ
 func WriteJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")

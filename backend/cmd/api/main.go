@@ -20,6 +20,7 @@ import (
 	"devpool/internal/booking"
 	"devpool/internal/config"
 	"devpool/internal/db"
+	"devpool/internal/httpx"
 	"devpool/internal/restaurant"
 	"devpool/internal/review"
 )
@@ -68,6 +69,8 @@ func main() {
 	(&booking.Handler{Svc: &booking.Service{Pool: pool}, Now: now}).Register(mux)
 	(&restaurant.Handler{Svc: &restaurant.Service{Pool: pool}, Now: now}).Register(mux)
 	(&review.Handler{Svc: &review.Service{Pool: pool}, Now: now}).Register(mux)
+	// path ใต้ /api ที่ไม่ตรงกับ route ใด → 404 problem+json (00-overview §5: error ทุกกรณีเป็น problem+json)
+	mux.HandleFunc("/api/", httpx.NotFound)
 
 	// ลำดับ: CSRF ตรวจก่อน → middleware อ่าน session → mux
 	handler, err := auth.CSRF(publicBaseURL, authHandler.Middleware(mux))
@@ -76,7 +79,12 @@ func main() {
 	}
 
 	port := env("PORT")
-	srv := &http.Server{Addr: ":" + port, Handler: handler}
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: handler,
+		// client ที่ส่ง header ช้าๆ (slowloris) ถือ connection ค้างไม่ได้เกิน 10 วินาที
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 
 	// 12-Factor IX (Disposability): เมื่อได้ Ctrl+C หรือ SIGTERM ให้หยุดรับคำขอใหม่
 	// แล้วรอคำขอที่ค้างอยู่ (เช่น transaction การจอง) ทำให้จบก่อนปิด ไม่ตัดกลางทาง

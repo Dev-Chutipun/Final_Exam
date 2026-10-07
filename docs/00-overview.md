@@ -99,7 +99,7 @@
 | Keycloak | 8081 (map จาก 8080 ใน container) |
 | PostgreSQL | 5432 |
 
-**เวอร์ชัน Go:** `backend/go.mod` ระบุ `go 1.26.5` ให้ตรงกับเครื่องที่รันจริง (`scripts/test-race.ps1` จึงใช้ image `golang:1.26.5`)
+**เวอร์ชัน Go:** `backend/go.mod` ระบุ `go 1.26.6` (อัปเดตจาก 1.26.5 เพื่อปิดช่องโหว่ใน standard library ที่ `govulncheck` พบ) `scripts/test-race.ps1` จึงใช้ image `golang:1.26.6`
 
 **Go รันบนเครื่องโดยตรง ไม่รันใน Docker** (ดู `02-auth.md` เรื่อง issuer) ยกเว้น `scripts/test-race.ps1` ที่ใช้ container เฉพาะตอนรัน test
 

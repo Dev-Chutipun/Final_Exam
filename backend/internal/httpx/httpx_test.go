@@ -140,6 +140,33 @@ func TestReadJSONRequiresJSONContentType(t *testing.T) {
 	}
 }
 
+// route ที่ไม่มีอยู่ (และ method ที่ไม่รองรับ) ต้องตอบเป็น problem+json ไม่ใช่ text/plain
+func TestNotFoundCatchAll(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	mux.HandleFunc("/api/", NotFound)
+
+	for _, c := range []struct {
+		method, path string
+		status       int
+	}{
+		{"GET", "/api/me", 200},
+		{"GET", "/api/nope", 404},
+		{"POST", "/api/me", 404},
+		{"DELETE", "/api/restaurants/1/x", 404},
+	} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(c.method, c.path, nil))
+		if rec.Code != c.status {
+			t.Errorf("%s %s: status %d, want %d", c.method, c.path, rec.Code, c.status)
+		}
+		if c.status == 404 && (rec.Header().Get("Content-Type") != "application/problem+json" ||
+			!strings.Contains(rec.Body.String(), "/problems/not-found")) {
+			t.Errorf("%s %s: %s %s", c.method, c.path, rec.Header().Get("Content-Type"), rec.Body.String())
+		}
+	}
+}
+
 func TestValidationAlwaysHasErrorsArray(t *testing.T) {
 	b, err := json.Marshal(Validation("x"))
 	if err != nil {

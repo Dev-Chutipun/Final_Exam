@@ -167,6 +167,14 @@ func TestSafeReturnTo(t *testing.T) {
 		"//evil.com":         "/",
 		`/\evil.com`:         "/",
 		"evil.com":           "/",
+		// เบราว์เซอร์ตัด tab/CR/LF ออกจาก URL: "/\t/evil.com" จะกลายเป็น "//evil.com" (open redirect)
+		"/\t/evil.com":  "/",
+		"/\n/evil.com":  "/",
+		"/\r/evil.com":  "/",
+		"/\t\\evil.com": "/",
+		"/ /evil.com":   "/",
+		"/\x00evil":     "/",
+		"/bookings\tx":  "/",
 	} {
 		if got := auth.SafeReturnTo(in); got != want {
 			t.Errorf("SafeReturnTo(%q) = %q, want %q", in, got, want)
