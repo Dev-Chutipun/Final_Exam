@@ -53,7 +53,7 @@
 | `1da4319` | Graceful shutdown (12-Factor IX) |
 | `febe4bf` | `docs/openapi.yaml` (OpenAPI 3.1, 26 endpoint) |
 | `2916b05` | `docs/dev-log.md` (ไฟล์นี้) |
-| (ถัดไป) | แก้ผลรีวิวความพร้อม §9: open redirect, Go 1.26.6 + x/text, 404 problem+json, timeout, global error, security headers, password policy, README |
+| `1bda5b1` | แก้ผลรีวิวความพร้อม §9: open redirect, Go 1.26.6 + x/text, 404 problem+json, timeout, global error, security headers, password policy, README |
 
 ---
 
