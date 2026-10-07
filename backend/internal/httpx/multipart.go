@@ -51,15 +51,20 @@ func ReadImage(fh *multipart.FileHeader) (Image, error) {
 	if err != nil {
 		return Image{}, err
 	}
+	return CheckImage(fh.Filename, data)
+}
+
+// CheckImage ตรวจเนื้อรูปที่อ่านมาแล้ว ใช้ร่วมกันระหว่างการอัปโหลดและคำสั่ง seed
+func CheckImage(name string, data []byte) (Image, error) {
 	if len(data) > MaxImageSize {
-		return Image{}, New("image-too-large", fh.Filename+" ใหญ่เกิน 2 MB")
+		return Image{}, New("image-too-large", name+" ใหญ่เกิน 2 MB")
 	}
 	if len(data) == 0 {
-		return Image{}, New("unsupported-image-type", fh.Filename+" เป็นไฟล์ว่าง")
+		return Image{}, New("unsupported-image-type", name+" เป็นไฟล์ว่าง")
 	}
 	ct := http.DetectContentType(data)
 	if !allowedImageTypes[ct] {
-		return Image{}, New("unsupported-image-type", fh.Filename+" ไม่ใช่รูป JPEG, PNG หรือ WebP")
+		return Image{}, New("unsupported-image-type", name+" ไม่ใช่รูป JPEG, PNG หรือ WebP")
 	}
 	return Image{ContentType: ct, Data: data}, nil
 }
