@@ -62,7 +62,7 @@
 | `/my/restaurants/new` | 6 ฟอร์มสร้างร้าน | Client | login | `POST /api/restaurants` |
 | `/my/restaurants/[id]` | 7 จัดการร้าน, 8 หน้าต่างยืนยัน | Server + ส่วนโต้ตอบ | เจ้าของ | รายละเอียด, ตั้งค่า, รูป, พักรับจอง, ลบ |
 | `/my/restaurants/[id]/edit` | 6 ฟอร์ม (โหมดแก้ไข) | Client | เจ้าของ | `PATCH /api/restaurants/{id}` |
-| `/my/restaurants/[id]/bookings` | 7 (ส่วนการจองรายวัน) | Server | เจ้าของ (ระดับ B) | `GET /api/restaurants/{id}/bookings` |
+| `/my/restaurants/[id]/bookings` | 7 (ส่วนการจองรายวัน) | Server | เจ้าของ (ระดับ B) | `GET /api/restaurants/{id}/bookings` · `?view=list` รายการทุกวันแบ่งหน้า (ค่าเริ่มต้น) · `?view=day&date=` รายวันพร้อม peak |
 | `/auth/error` | — | Server | สาธารณะ | ข้อความตาม `code` |
 
 ทุก route มี `loading.tsx`, `error.tsx` และ `not-found.tsx` · สถานะการค้นหาและการเรียงเก็บใน URL (แชร์ลิงก์และกดย้อนกลับได้) ช่องค้นหาหน่วงเวลา 300 ms ก่อนเปลี่ยน URL

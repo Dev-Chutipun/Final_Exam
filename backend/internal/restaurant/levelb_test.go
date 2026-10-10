@@ -128,3 +128,80 @@ func TestConcurrentK8SuspendWhileBooking(t *testing.T) {
 		}
 	}
 }
+
+// B2 [B] รายการการจองของร้านแบบแบ่งหน้า: เจ้าของเห็นทุกวันในครั้งเดียว ไม่ต้องไล่เปิดทีละวัน
+func TestRestaurantBookingsB2(t *testing.T) {
+	e := newEnv(t)
+	owner, other := e.user("owner"), e.user("other")
+	a, b := e.user("แอน"), e.user("บี")
+	r := e.createViaAPI(owner, "ร้าน")
+
+	// testNow = 2026-10-10 08:00 · การจองกระจายหลายวันเพื่อพิสูจน์ว่าเห็นข้ามวันได้
+	soon := e.existing(r, a, day11("12:00"), day11("13:00"), 2)
+	later := e.existing(r, b, at("2026-10-25 19:00"), at("2026-10-25 20:00"), 4)
+	oldest := e.existing(r, a, at("2026-10-01 12:00"), at("2026-10-01 13:00"), 2)
+	recent := e.existing(r, b, at("2026-10-09 12:00"), at("2026-10-09 13:00"), 3)
+	gone := e.existing(r, a, at("2026-10-20 12:00"), at("2026-10-20 13:00"), 2)
+	e.exec(`UPDATE bookings SET status = 'cancelled', cancelled_at = now() WHERE id = $1`, gone)
+
+	base := "/api/restaurants/" + itoa(r) + "/bookings"
+	ids := func(body map[string]any) string {
+		var out []string
+		for _, it := range body["items"].([]any) {
+			out = append(out, fmt.Sprint(it.(map[string]any)["id"]))
+		}
+		return strings.Join(out, " ")
+	}
+
+	if status, typ, _ := e.do("GET", base, other, ""); status != 403 || typ != "/problems/not-restaurant-owner" {
+		t.Errorf("other: %d %s", status, typ)
+	}
+
+	// ไม่ส่ง date และไม่ส่ง tab → upcoming เรียงจากใกล้สุด พร้อมตัวนับทุกแท็บ
+	status, _, body := e.do("GET", base, owner, "")
+	if status != 200 {
+		t.Fatalf("got %d %v", status, body)
+	}
+	if got, want := ids(body), fmt.Sprint(soon, " ", later); got != want {
+		t.Errorf("upcoming ids = %q, want %q", got, want)
+	}
+	counts := body["counts"].(map[string]any)
+	if counts["upcoming"] != float64(2) || counts["past"] != float64(2) || counts["cancelled"] != float64(1) {
+		t.Errorf("counts = %v", counts)
+	}
+	if body["total"] != float64(2) || body["page"] != float64(1) {
+		t.Errorf("paging = total %v page %v", body["total"], body["total"])
+	}
+	// รายการรวมหลายวันจึงไม่มี peak (วัดได้เฉพาะในวันทำการเดียว)
+	if _, ok := body["peak"]; ok {
+		t.Error("รายการแบบแบ่งหน้าต้องไม่มี peak")
+	}
+	if first := body["items"].([]any)[0].(map[string]any); first["customer_display_name"] != "แอน" || first["email"] != nil {
+		t.Errorf("first = %v", first)
+	}
+
+	// past เรียงใหม่สุดก่อน
+	if _, _, past := e.do("GET", base+"?tab=past", owner, ""); ids(past) != fmt.Sprint(recent, " ", oldest) {
+		t.Errorf("past ids = %q", ids(past))
+	}
+	if _, _, c := e.do("GET", base+"?tab=cancelled", owner, ""); ids(c) != fmt.Sprint(gone) {
+		t.Errorf("cancelled ids = %q", ids(c))
+	}
+
+	// แบ่งหน้า: หน้าละ 1 รายการ
+	_, _, p2 := e.do("GET", base+"?tab=upcoming&page=2&page_size=1", owner, "")
+	if ids(p2) != fmt.Sprint(later) || p2["total"] != float64(2) {
+		t.Errorf("page 2 = %q total %v", ids(p2), p2["total"])
+	}
+
+	if status, typ, _ := e.do("GET", base+"?tab=bad", owner, ""); status != 400 || typ != "/problems/validation" {
+		t.Errorf("bad tab: %d %s", status, typ)
+	}
+	if status, typ, _ := e.do("GET", base+"?page=0", owner, ""); status != 400 || typ != "/problems/validation" {
+		t.Errorf("bad page: %d %s", status, typ)
+	}
+	// ส่ง date มาด้วยยังได้มุมมองรายวันเหมือนเดิม (ไม่เปลี่ยนสัญญาเดิม)
+	if _, _, d := e.do("GET", base+"?date=2026-10-11", owner, ""); d["peak"] != float64(2) || ids(d) != fmt.Sprint(soon) {
+		t.Errorf("date view = %v", d)
+	}
+}
