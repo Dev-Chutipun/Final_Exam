@@ -213,8 +213,10 @@ func run(reset bool, imageDir string) error {
 	now := time.Now().In(booking.Bangkok)
 	return db.WithTx(ctx, pool, func(tx pgx.Tx) error {
 		if reset {
+			// ไม่ใช้ RESTART IDENTITY: /api/restaurants/{id}/images/{imageId} ส่ง Cache-Control immutable
+			// ถ้า id เริ่มที่ 1 ใหม่ทุกครั้ง URL เดิมจะชี้รูปใหม่ เบราว์เซอร์ที่เคยเข้าจะเห็นรูปเก่าค้างอยู่
 			if _, err := tx.Exec(ctx, `TRUNCATE users, sessions, restaurants, restaurant_categories,
-				restaurant_images, bookings, reviews RESTART IDENTITY CASCADE`); err != nil {
+				restaurant_images, bookings, reviews CASCADE`); err != nil {
 				return err
 			}
 		} else {
