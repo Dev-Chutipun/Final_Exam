@@ -1,5 +1,7 @@
 # DevPool Final Exam — ระบบจองโต๊ะร้านอาหารและรีวิวร้าน
 
+[![CI](https://github.com/Dev-Chutipun/Final_Exam/actions/workflows/ci.yml/badge.svg)](https://github.com/Dev-Chutipun/Final_Exam/actions/workflows/ci.yml)
+
 ผู้ใช้ทุกคนเป็นได้ทั้งลูกค้าและเจ้าของร้าน: สร้างร้าน (ชื่อ รายละเอียด รูป 1–3 รูป หมวด ที่นั่ง เวลาเปิด–ปิด) จองโต๊ะแบบนับที่นั่งเป็นช่วงเวลา 30 นาที แก้ไข/ยกเลิกก่อน deadline และรีวิวร้านของคนอื่น รายการร้านเรียงด้วยคะแนนแบบ Bayesian
 
 | ส่วน | เทคโนโลยี |
@@ -106,6 +108,17 @@ npm run build                      # type check + build
 - integration test ใช้ฐาน `TEST_DATABASE_URL` ถ้าไม่ได้ตั้งจะถูกข้าม · `-p 1` กันไม่ให้หลาย package ล้างฐานข้อมูลชนกัน
 - ห้ามรัน `go test` บนเครื่องพร้อมกับ `test-race.ps1` เพราะใช้ฐาน test เดียวกัน
 - หลังแก้ `.env` ใส่ `-count=1` เพื่อไม่ใช้ผลจาก cache
+
+**CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) รันทุก push และ pull request ที่เข้า `main` แบ่งเป็นสอง job ที่ทำงานขนานกัน
+
+| job | ตรวจอะไร |
+|---|---|
+| Backend | `gofmt`, `go vet`, `go build`, `go test -p 1 -race ./...`, `TestConcurrent` แบบ `-count=100 -race`, `govulncheck` |
+| Frontend | `npm ci`, ESLint, `tsc --noEmit`, `next build`, `npm audit --omit=dev` |
+
+- ใช้ PostgreSQL 17 เป็น service container ตัวเดียว **ไม่ต้องมี Keycloak** เพราะ fake auth อยู่ใน `_test.go` และ test ของ auth ใช้ issuer ปลอม
+- `-race` บน runner Linux รันตรง ๆ ได้ ไม่ต้องใช้ container แบบบน Windows
+- มีขั้นตอนตรวจว่า integration test ได้คุยกับฐานข้อมูลจริง (นับแถวใน `schema_migrations`) กันกรณีที่ `TEST_DATABASE_URL` หลุดแล้ว test ถูกข้ามทั้งหมดแต่ CI ยังขึ้นเขียว
 
 ## Future work (ระดับ C ที่ไม่ได้ทำ)
 

@@ -1,0 +1,123 @@
+name: CI
+
+# รันทุก push และทุก pull request ที่เข้า main
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# push ติด ๆ กันให้ยกเลิกรอบเก่าทิ้ง ไม่ต้องรอผลของ commit ที่ถูกแทนที่แล้ว
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (Go + PostgreSQL)
+    runs-on: ubuntu-latest
+
+    # ใช้แค่ PostgreSQL · ไม่ต้องมี Keycloak เพราะ fake auth อยู่ใน _test.go และ auth_test ใช้ issuer ปลอม
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: devpool
+          POSTGRES_PASSWORD: devpool
+          POSTGRES_DB: devpool
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U devpool -d devpool"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # testdb อ่านค่านี้ ถ้าไม่ได้ตั้งจะ t.Skip ทุก integration test แล้ว CI จะเขียวทั้งที่ไม่ได้ทดสอบอะไร
+      TEST_DATABASE_URL: postgres://devpool:devpool@localhost:5432/devpool_test?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # service container ไม่ได้รันสคริปต์ใน docker/postgres-init/ จึงต้องสร้างฐาน test เอง
+      - name: Create test database
+        run: psql "postgres://devpool:devpool@localhost:5432/devpool" -c 'CREATE DATABASE devpool_test'
+
+      - name: gofmt
+        working-directory: backend
+        run: |
+          unformatted=$(gofmt -l ./cmd ./internal)
+          if [ -n "$unformatted" ]; then
+            echo "ไฟล์ที่ยังไม่ได้ gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        working-directory: backend
+        run: go vet ./...
+
+      - name: go build
+        working-directory: backend
+        run: go build ./...
+
+      # -p 1 เพราะทุก package ใช้ฐานข้อมูลเดียวกันและล้างข้อมูลก่อนทุก test
+      # -race ตรงนี้ไม่ต้องใช้ container เหมือนบน Windows เพราะ runner เป็น Linux ที่มี gcc อยู่แล้ว
+      - name: go test (race)
+        working-directory: backend
+        run: go test -p 1 -race ./...
+
+      # testdb จะ t.Skip ทุก integration test ถ้าต่อฐานข้อมูลไม่ได้ แล้ว CI จะขึ้นเขียวทั้งที่ไม่ได้ทดสอบอะไร
+      # ตรวจว่าตาราง schema_migrations มีจริง ซึ่งเกิดขึ้นได้ก็ต่อเมื่อ test รันกับฐานข้อมูลจริงแล้วเท่านั้น
+      - name: Prove the integration tests really hit the database
+        run: |
+          n=$(psql "$TEST_DATABASE_URL" -tAc "SELECT count(*) FROM schema_migrations")
+          echo "schema_migrations = $n"
+          [ "$n" -gt 0 ] || { echo "integration test ถูกข้าม ฐานข้อมูลยังว่าง"; exit 1; }
+
+      - name: TestConcurrent ×100 (race)
+        working-directory: backend
+        run: go test -p 1 -race -count=100 -run TestConcurrent ./...
+
+      - name: govulncheck
+        working-directory: backend
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: ESLint
+        run: npx eslint .
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      # ทุกหน้าเป็น dynamic (server-rendered on demand) จึงไม่ต้องมี API ตอน build
+      - name: Build
+        run: npm run build
+
+      - name: npm audit (เฉพาะ dependency ที่ขึ้น production)
+        run: npm audit --omit=dev --audit-level=high
