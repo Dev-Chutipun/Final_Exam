@@ -34,7 +34,7 @@ export default async function BookingsPage({ searchParams }: { searchParams: Pro
   const href = (t: Tab, p = 1) => `/bookings?tab=${t}${p > 1 ? `&page=${p}` : ""}`;
 
   return (
-    <main className="mx-auto max-w-[1000px] px-4 pt-12 pb-18 sm:px-6">
+    <main className="mx-auto max-w-(--w-list) px-4 pt-12 pb-18 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-[40px] font-semibold">การจองของฉัน</h1>

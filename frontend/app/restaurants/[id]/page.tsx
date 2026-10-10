@@ -36,7 +36,7 @@ export default async function RestaurantPage({ params }: Params) {
   const firstSlug = r.categories[0]?.slug;
 
   return (
-    <main className="mx-auto max-w-[1232px] px-4 pt-5 pb-18 sm:px-6">
+    <main className="mx-auto max-w-(--w-wide) px-4 pt-5 pb-18 sm:px-6">
       <nav aria-label="เส้นทาง" className="flex gap-2 px-1.5 text-sm text-(--ink-2)">
         <Link href="/" className="hover:underline">
           ร้านอาหาร
@@ -109,7 +109,7 @@ export default async function RestaurantPage({ params }: Params) {
                 อย่างน้อย {formatMinutes(r.min_lead_minutes)} ไม่เกิน 30 วัน
               </Policy>
               <Policy title="ระยะเวลาต่อครั้ง" tone="from-(--st-mint-bg)/90">
-                30 นาทีถึง 3 ชั่วโมง นับเป็นที่นั่ง
+                จองได้ครั้งละ 30 นาทีถึง 3 ชั่วโมง
               </Policy>
             </div>
           </section>
@@ -122,6 +122,7 @@ export default async function RestaurantPage({ params }: Params) {
             name: r.name,
             capacity: r.capacity,
             cancel_window_minutes: r.cancel_window_minutes,
+            min_lead_minutes: r.min_lead_minutes,
             accepting_bookings: r.accepting_bookings,
           }}
           loggedIn={me !== null}

@@ -15,7 +15,7 @@ export default async function MyRestaurantsPage() {
   const list = await apiGet<MyRestaurant[]>("/api/me/restaurants");
 
   return (
-    <main className="mx-auto max-w-[1000px] px-4 pt-12 pb-18 sm:px-6">
+    <main className="mx-auto max-w-(--w-list) px-4 pt-12 pb-18 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-[40px] font-semibold">ร้านของฉัน</h1>

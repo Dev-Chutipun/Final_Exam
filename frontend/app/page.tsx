@@ -48,18 +48,18 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   const filtered = q !== "" || known.length > 0;
 
   return (
-    <main className="mx-auto max-w-[1232px] px-4 pt-12 pb-18 sm:px-6">
+    <main className="mx-auto max-w-(--w-wide) px-4 pt-12 pb-18 sm:px-6">
       <section className="flex flex-col items-center gap-3.5 text-center">
         <Pill tone="peach" className="px-3.5 py-1.5">
           จองล่วงหน้าได้สูงสุด 30 วัน
         </Pill>
         <h1 className="text-4xl leading-tight font-semibold sm:text-[54px]">
-          วันนี้อยากกิน<span className="text-(--accent-strong)">อะไรดี?</span>
+          อยากกินไหน นึกถึง <span className="text-(--accent-strong)">กินนี่</span>
         </h1>
-        <p className="max-w-[620px] text-lg text-(--ink-2)">เลือกร้านที่ใช่ ดูที่ว่างรายช่วงเวลา แล้วจองโต๊ะได้ในไม่กี่ขั้นตอน</p>
+        <p className="max-w-(--w-read) text-lg text-(--ink-2)">ที่ที่ทุกคนจะได้กินที่ที่อยากกิน</p>
       </section>
 
-      <div className="glass mx-auto mt-8 flex max-w-[880px] flex-col gap-2.5 rounded-3xl p-2.5 sm:flex-row sm:items-center">
+      <div className="glass mt-8 flex flex-col gap-2.5 rounded-3xl p-2.5 sm:flex-row sm:items-center">
         <Suspense fallback={null}>
           <SearchBox initial={q} />
           <SortSelect value={sort} />
@@ -67,7 +67,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
       </div>
 
       {/* [B] กรองตามหมวด เลือกได้หลายหมวด (OR) */}
-      <nav aria-label="หมวดหมู่" className="mt-5 flex flex-wrap justify-center gap-2.5">
+      <nav aria-label="หมวดหมู่" className="mt-5 flex flex-wrap gap-2.5">
         <Chip href={`/?${build({ categories: [] })}`} on={known.length === 0}>
           ทั้งหมด
         </Chip>

@@ -28,7 +28,7 @@ export function BookingPanel({
           <Link href={`/my/restaurants/${restaurant.id}`}>จัดการร้าน</Link>
         </Button>
         <Button asChild variant="glass" size="lg">
-          <Link href={`/my/restaurants/${restaurant.id}/bookings`}>ดูการจองรายวัน</Link>
+          <Link href={`/my/restaurants/${restaurant.id}/bookings`}>ดูการจอง</Link>
         </Button>
       </Panel>
     );
@@ -38,12 +38,12 @@ export function BookingPanel({
     return (
       <Panel title="จองโต๊ะ">
         <div className="flex flex-col gap-1.5 rounded-[22px] border border-white/95 bg-linear-135 from-(--st-peach-bg)/85 to-(--st-butter-bg)/85 p-5">
-          <span className="font-heading text-[17px] font-semibold">ดูที่ว่างได้ทุกวัน</span>
-          <span className="text-[15px] text-(--ink-2)">เข้าสู่ระบบก่อนจองโต๊ะหรือเขียนรีวิว แล้วระบบจะพากลับมาที่ร้านนี้</span>
+          <span className="font-heading text-[17px] font-semibold">ต้องเข้าสู่ระบบก่อน</span>
+          <span className="text-[15px] text-(--ink-2)">เข้าสู่ระบบเพื่อจองโต๊ะหรือเขียนรีวิว เสร็จแล้วจะกลับมาที่หน้านี้</span>
         </div>
         <Suspense fallback={null}>
           <LoginLink variant="cta" size="confirm">
-            เข้าสู่ระบบเพื่อจอง
+            เข้าสู่ระบบ
           </LoginLink>
         </Suspense>
       </Panel>

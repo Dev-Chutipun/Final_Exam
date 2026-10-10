@@ -20,7 +20,7 @@ export async function SiteHeader() {
 
   return (
     <div className="px-4 pt-4 sm:px-6">
-      <header className="glass mx-auto flex min-h-[68px] max-w-[1232px] flex-wrap items-center gap-x-6 gap-y-2 rounded-[22px] px-3 py-2 sm:pl-[18px]">
+      <header className="glass mx-auto flex min-h-[68px] max-w-(--w-wide) flex-wrap items-center gap-x-6 gap-y-2 rounded-[22px] px-3 py-2 sm:pl-[18px]">
         <Link href="/" className="font-heading flex items-center gap-2.5 text-[21px] font-bold">
           <span
             aria-hidden="true"
@@ -30,7 +30,7 @@ export async function SiteHeader() {
               <path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-2 1.5-3 4-3 7 0 2 1 3 3 3v8" />
             </svg>
           </span>
-          จองโต๊ะ
+          กินนี่
         </Link>
 
         <NavLinks loggedIn={me !== null} />

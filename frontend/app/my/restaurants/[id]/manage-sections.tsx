@@ -7,6 +7,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useSuccessDialog } from "@/components/success-dialog";
 import { Pill } from "@/components/pill";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -22,13 +23,14 @@ import { ClockSelect } from "../restaurant-form";
 /** สวิตช์พักรับจอง [B] */
 export function AcceptingSwitch({ restaurantId, accepting }: { restaurantId: number; accepting: boolean }) {
   const router = useRouter();
+  const showSuccess = useSuccessDialog();
   const [busy, setBusy] = useState(false);
 
   async function change(next: boolean) {
     setBusy(true);
     try {
       await apiSend("PATCH", `/api/restaurants/${restaurantId}/booking-status`, { accepting_bookings: next });
-      toast.success(next ? "เปิดรับจองแล้ว" : "พักรับจองแล้ว");
+      showSuccess({ title: next ? "เปิดรับจองแล้ว" : "พักรับจองแล้ว", detail: next ? "ลูกค้าจองร้านนี้ได้แล้ว" : "ลูกค้าจองใหม่ไม่ได้ แต่การจองเดิมยังใช้ได้ตามปกติ" });
       router.refresh();
     } catch (err) {
       toast.error(problemMessage(err));
@@ -50,6 +52,7 @@ export function AcceptingSwitch({ restaurantId, accepting }: { restaurantId: num
 /** ตั้งค่าการจอง (01 §7.6): 409 แสดงรายการการจองที่ชน */
 export function SettingsForm({ r }: { r: RestaurantDetail }) {
   const router = useRouter();
+  const showSuccess = useSuccessDialog();
   const [capacity, setCapacity] = useState(String(r.capacity));
   const [openTime, setOpenTime] = useState(r.open_time);
   const [closeTime, setCloseTime] = useState(r.close_time);
@@ -72,7 +75,7 @@ export function SettingsForm({ r }: { r: RestaurantDetail }) {
         cancel_window_minutes: Number(cancelWindow),
         min_lead_minutes: Number(minLead),
       });
-      toast.success("บันทึกการตั้งค่าแล้ว");
+      showSuccess({ title: "บันทึกการตั้งค่าแล้ว" });
       router.refresh();
     } catch (err) {
       if (err instanceof ApiError) {
@@ -250,6 +253,7 @@ export function ImagesManager({ restaurantId, imageIds }: { restaurantId: number
 /** ลบร้าน: 409 → แสดงว่ายังมีการจอง พร้อมปุ่มพักรับจอง (อาร์ตบอร์ด 8) */
 export function DeleteRestaurant({ r }: { r: RestaurantDetail }) {
   const router = useRouter();
+  const showSuccess = useSuccessDialog();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [blocked, setBlocked] = useState<{ count: number; latest: string; accepting: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -258,7 +262,7 @@ export function DeleteRestaurant({ r }: { r: RestaurantDetail }) {
     setBusy(true);
     try {
       await apiSend("DELETE", `/api/restaurants/${r.id}`);
-      toast.success(`ลบร้าน ${r.name} แล้ว`);
+      showSuccess({ title: "ลบร้านแล้ว", detail: r.name });
       router.push("/my/restaurants");
       router.refresh();
     } catch (err) {
@@ -281,7 +285,7 @@ export function DeleteRestaurant({ r }: { r: RestaurantDetail }) {
     setBusy(true);
     try {
       await apiSend("PATCH", `/api/restaurants/${r.id}/booking-status`, { accepting_bookings: false });
-      toast.success("พักรับจองแล้ว");
+      showSuccess({ title: "พักรับจองแล้ว", detail: "ลูกค้าจองใหม่ไม่ได้ แต่การจองเดิมยังใช้ได้ตามปกติ" });
       setBlocked(null);
       router.refresh();
     } catch (err) {

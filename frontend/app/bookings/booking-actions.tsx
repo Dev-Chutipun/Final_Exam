@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { apiSend } from "@/lib/api-client";
 import { problemMessage } from "@/lib/problem";
+import { useSuccessDialog } from "@/components/success-dialog";
 import { formatDate, formatTime, formatTimeRange, localDate } from "@/lib/time";
 import type { MyBooking, RestaurantDetail } from "@/lib/types";
 
@@ -20,6 +21,7 @@ export function BookingActions({ booking }: { booking: MyBooking }) {
   const [editOpen, setEditOpen] = useState(false);
   const [restaurant, setRestaurant] = useState<BookingRestaurant | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const showSuccess = useSuccessDialog();
   const [busy, setBusy] = useState(false);
 
   if (!booking.can_modify) {
@@ -49,7 +51,10 @@ export function BookingActions({ booking }: { booking: MyBooking }) {
     setBusy(true);
     try {
       await apiSend("POST", `/api/bookings/${booking.id}/cancel`);
-      toast.success("ยกเลิกการจองแล้ว");
+      showSuccess({
+        title: "ยกเลิกการจองแล้ว",
+        detail: `${booking.restaurant_name}\n${formatDate(booking.start_at)} ${formatTimeRange(booking.start_at, booking.end_at)}`,
+      });
       setCancelOpen(false);
       router.refresh();
     } catch (err) {
@@ -104,7 +109,6 @@ export function BookingActions({ booking }: { booking: MyBooking }) {
               editing={booking}
               onCancelEdit={() => setEditOpen(false)}
               onSaved={() => {
-                toast.success("บันทึกการเปลี่ยนแปลงแล้ว");
                 setEditOpen(false);
                 router.refresh();
               }}

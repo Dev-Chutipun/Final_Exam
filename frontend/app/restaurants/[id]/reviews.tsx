@@ -10,6 +10,7 @@ import { StarIcon } from "@/components/icons";
 import { LoginLink } from "@/components/login-link";
 import { Pill } from "@/components/pill";
 import { Button } from "@/components/ui/button";
+import { useSuccessDialog } from "@/components/success-dialog";
 import { apiSend } from "@/lib/api-client";
 import { ApiError, problemMessage } from "@/lib/problem";
 import { formatDate } from "@/lib/time";
@@ -70,7 +71,7 @@ export function Reviews({
           </Suspense>
         </div>
       ) : (
-        <ReviewForm key={restaurant.my_review?.id ?? "new"} restaurantId={restaurant.id} mine={restaurant.my_review} onChanged={changed} />
+        <MyReview restaurantId={restaurant.id} mine={restaurant.my_review} onChanged={changed} />
       )}
 
       {data.items.length === 0 ? (
@@ -120,7 +121,12 @@ export function Reviews({
   );
 }
 
-function ReviewForm({
+/**
+ * ส่วนรีวิวของผู้ใช้ที่ login แล้ว
+ * ยังไม่เคยรีวิว → เปิดฟอร์มเขียนไว้เลย · เคยรีวิวแล้ว → แสดงแถบสรุปกับปุ่ม ไม่เปิดฟอร์มแก้ไขให้เอง
+ * (เนื้อรีวิวอยู่ในรายการข้างล่างพร้อมป้าย "รีวิวของคุณ" อยู่แล้ว จึงไม่ต้องแสดงซ้ำ)
+ */
+function MyReview({
   restaurantId,
   mine,
   onChanged,
@@ -129,10 +135,78 @@ function ReviewForm({
   mine: RestaurantDetail["my_review"];
   onChanged: () => Promise<void>;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const showSuccess = useSuccessDialog();
+
+  async function remove() {
+    if (!mine) return;
+    setBusy(true);
+    try {
+      await apiSend("DELETE", `/api/reviews/${mine.id}`);
+      showSuccess({ title: "ลบรีวิวแล้ว" });
+      setEditing(false);
+      await onChanged();
+    } catch (err) {
+      toast.error(problemMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (mine && !editing) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[22px] border border-white/95 bg-linear-135 from-(--st-peach-bg)/70 to-(--st-lav-bg)/70 p-4.5">
+        <span className="font-heading flex items-center gap-2 font-semibold">
+          คุณรีวิวร้านนี้ไว้แล้ว
+          <Pill tone="butter">
+            <StarIcon size={13} />
+            {mine.rating}/5
+          </Pill>
+        </span>
+        <div className="flex gap-2">
+          <Button variant="danger" onClick={remove} disabled={busy}>
+            ลบรีวิว
+          </Button>
+          <Button variant="glass" onClick={() => setEditing(true)} disabled={busy}>
+            แก้รีวิว
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ReviewForm
+      key={mine?.id ?? "new"}
+      restaurantId={restaurantId}
+      mine={mine}
+      onCancel={mine ? () => setEditing(false) : undefined}
+      onChanged={async () => {
+        setEditing(false);
+        await onChanged();
+      }}
+    />
+  );
+}
+
+function ReviewForm({
+  restaurantId,
+  mine,
+  onCancel,
+  onChanged,
+}: {
+  restaurantId: number;
+  mine: RestaurantDetail["my_review"];
+  /** มีเฉพาะตอนแก้รีวิวเดิม กดแล้วกลับไปแถบสรุปโดยไม่บันทึก */
+  onCancel?: () => void;
+  onChanged: () => Promise<void>;
+}) {
   const [rating, setRating] = useState(mine?.rating ?? 0);
   const [comment, setComment] = useState(mine?.comment ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const showSuccess = useSuccessDialog();
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -141,24 +215,10 @@ function ReviewForm({
     try {
       if (mine) await apiSend("PUT", `/api/reviews/${mine.id}`, { rating, comment });
       else await apiSend("POST", `/api/restaurants/${restaurantId}/reviews`, { rating, comment });
-      toast.success(mine ? "บันทึกรีวิวแล้ว" : "ส่งรีวิวแล้ว");
+      showSuccess({ title: mine ? "บันทึกรีวิวแล้ว" : "ส่งรีวิวแล้ว", detail: `ให้ ${rating} ดาวกับร้านนี้` });
       await onChanged();
     } catch (err) {
       if (err instanceof ApiError) setErrors(err.fieldErrors);
-      toast.error(problemMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove() {
-    if (!mine) return;
-    setBusy(true);
-    try {
-      await apiSend("DELETE", `/api/reviews/${mine.id}`);
-      toast.success("ลบรีวิวแล้ว");
-      await onChanged();
-    } catch (err) {
       toast.error(problemMessage(err));
     } finally {
       setBusy(false);
@@ -204,9 +264,9 @@ function ReviewForm({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-[13px] text-(--ink-2)">{length.toLocaleString("th-TH")} / 1,000 ตัวอักษร</span>
         <div className="flex gap-2">
-          {mine && (
-            <Button type="button" variant="danger" onClick={remove} disabled={busy}>
-              ลบรีวิว
+          {onCancel && (
+            <Button type="button" variant="glass" onClick={onCancel} disabled={busy}>
+              ไม่แก้ไข
             </Button>
           )}
           <Button type="submit" disabled={busy || rating === 0 || length === 0}>

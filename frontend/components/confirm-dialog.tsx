@@ -8,7 +8,6 @@ import {
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
-  AlertDialogFooter,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
@@ -43,7 +42,8 @@ export function ConfirmDialog({
         <AlertDialogDescription asChild>
           <div className="flex flex-col gap-3 text-[15px] text-(--ink-2)">{children}</div>
         </AlertDialogDescription>
-        <AlertDialogFooter className="mt-1 flex-row justify-end gap-2.5">
+        {/* ไม่ใช้ AlertDialogFooter ของ shadcn เพราะมีแถบพื้นสีเทาและมุมโค้ง 12px ติดมาในตัว ซึ่งไม่เข้ากับการ์ดมุมโค้ง 32px */}
+        <div className="mt-1 flex flex-row justify-end gap-2.5">
           <AlertDialogCancel asChild>
             <Button variant="glass" disabled={busy}>
               {cancelLabel}
@@ -53,7 +53,7 @@ export function ConfirmDialog({
           <Button variant="danger-strong" disabled={busy} onClick={onConfirm}>
             {busy ? "กำลังดำเนินการ…" : confirmLabel}
           </Button>
-        </AlertDialogFooter>
+        </div>
       </AlertDialogContent>
     </AlertDialog>
   );

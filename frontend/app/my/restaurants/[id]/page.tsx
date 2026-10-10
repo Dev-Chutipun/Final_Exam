@@ -22,7 +22,7 @@ export default async function ManagePage({ params }: { params: Promise<{ id: str
   const upcoming = mine.find((m) => m.id === r.id)?.upcoming_count ?? 0;
 
   return (
-    <main className="mx-auto max-w-[980px] px-4 pt-9 pb-18 sm:px-6">
+    <main className="mx-auto max-w-(--w-list) px-4 pt-9 pb-18 sm:px-6">
       <nav aria-label="เส้นทาง" className="flex gap-2 text-sm text-(--ink-2)">
         <Link href="/my/restaurants" className="hover:underline">
           ร้านของฉัน
@@ -98,7 +98,7 @@ export default async function ManagePage({ params }: { params: Promise<{ id: str
             <p className="text-sm text-(--ink-2)">ดูรายการจองของลูกค้าในแต่ละวันทำการ และจำนวนที่นั่งที่ใช้พร้อมกันสูงสุด</p>
           </div>
           <Button asChild variant="glass" className="shrink-0">
-            <Link href={`/my/restaurants/${r.id}/bookings`}>ดูการจองรายวัน</Link>
+            <Link href={`/my/restaurants/${r.id}/bookings`}>ดูการจอง</Link>
           </Button>
         </Section>
 

@@ -14,7 +14,7 @@ export default async function NewRestaurantPage() {
   const categories = await apiGet<Category[]>("/api/categories");
 
   return (
-    <main className="mx-auto max-w-[800px] px-4 pt-9 pb-18 sm:px-6">
+    <main className="mx-auto max-w-(--w-form) px-4 pt-9 pb-18 sm:px-6">
       <nav aria-label="เส้นทาง" className="flex gap-2 text-sm text-(--ink-2)">
         <Link href="/my/restaurants" className="hover:underline">
           ร้านของฉัน

@@ -6,10 +6,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { Pill } from "@/components/pill";
+import { useSuccessDialog } from "@/components/success-dialog";
 import { Button } from "@/components/ui/button";
 import { apiSend } from "@/lib/api-client";
 import { ApiError, problemMessage } from "@/lib/problem";
-import { addDays, addMinutes, formatDate, formatTime, formatTimeRange, localDate, splitApiTime, todayInBangkok, toApiTime } from "@/lib/time";
+import { addDays, addMinutes, formatDate, formatMinutes, formatTime, formatTimeRange, localDate, splitApiTime, todayInBangkok, toApiTime } from "@/lib/time";
 import type { Availability, Booking, Slot } from "@/lib/types";
 
 export type BookingRestaurant = {
@@ -17,6 +18,7 @@ export type BookingRestaurant = {
   name: string;
   capacity: number;
   cancel_window_minutes: number;
+  min_lead_minutes: number;
   accepting_bookings: boolean;
 };
 
@@ -37,11 +39,13 @@ export function BookingForm({ restaurant, initialDate, editing, onSaved, onCance
   const [start, setStart] = useState<string | null>(editing?.start_at ?? null);
   const [end, setEnd] = useState<string | null>(editing?.end_at ?? null);
   const [availability, setAvailability] = useState<Availability | null>(null);
+  const [loadedAt, setLoadedAt] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<{ title: string; detail: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [booked, setBooked] = useState<Booking | null>(null);
+  const showSuccess = useSuccessDialog();
 
   const today = todayInBangkok();
   const n = Number.parseInt(party, 10);
@@ -52,6 +56,8 @@ export function BookingForm({ restaurant, initialDate, editing, onSaved, onCance
     try {
       const a = await apiSend<Availability>("GET", `/api/restaurants/${restaurant.id}/availability?date=${date}`);
       setAvailability(a);
+      // จำเวลาที่ดึงข้อมูลไว้ ใช้บอกว่าร้านปิดไปแล้วหรือยัง (ห้ามเรียก Date.now() ตอน render เพราะไม่ pure)
+      setLoadedAt(Date.now());
     } catch (err) {
       setAvailability(null);
       setLoadError(problemMessage(err));
@@ -93,13 +99,42 @@ export function BookingForm({ restaurant, initialDate, editing, onSaved, onCance
   const selected = startValid && endValid ? slots.filter((s) => s.start >= start! && s.end <= end!) : [];
   const minFree = selected.length > 0 ? Math.min(...selected.map((s) => s.free)) : null;
 
+  // เลือกเวลาเริ่มใหม่ ได้ช่วงสั้นสุด 30 นาที แล้วค่อยขยายเอง
   const pickStart = (s: string) => {
     setStart(s);
-    const ends = endsFrom(s);
-    setEnd(ends[1] ?? ends[0] ?? null); // ค่าเริ่มต้น 1 ชั่วโมง ถ้าไม่พอใช้ 30 นาที
+    setEnd(endsFrom(s)[0] ?? null);
+  };
+
+  // กดช่องในตาราง: ถ้าช่องนั้นอยู่หลังเวลาเริ่มปัจจุบันและขยายไปถึงได้ ให้ยืดช่วงถึงช่องนั้น
+  // ไม่อย่างนั้น (กดช่องเดิม กดย้อนหลัง เกิน 3 ชั่วโมง หรือมีช่องที่นั่งไม่พอคั่นกลาง) เริ่มใหม่ที่ช่องนั้น
+  const pickSlot = (s: Slot) => {
+    if (startValid && s.start > start! && endsFrom(start!).includes(s.end)) {
+      setEnd(s.end);
+      return;
+    }
+    pickStart(s.start);
   };
 
   const dayLabel = (iso: string) => (localDate(iso) !== date ? " (วันถัดไป)" : "");
+
+  const paused = !restaurant.accepting_bookings && !editing;
+
+  // ทำไมวันที่เลือกถึงไม่มีช่วงให้กด — บอกเหตุผลแทนที่จะปล่อยให้ตารางเป็นสีเทาเฉย ๆ
+  const closed = slots.length > 0 && slots.every((s) => new Date(s.end).getTime() <= loadedAt);
+  const noSlots =
+    paused || !partyValid || slots.length === 0 || startOptions.length > 0
+      ? null
+      : closed
+        ? { text: "เลยเวลาทำการของวันที่เลือกมาแล้ว", hint: "เลือกวันถัดไปเพื่อจองตามปกติ", showGrid: false }
+        : slots.some((s) => s.free >= n)
+          ? {
+              text: `ช่วงเวลาที่เหลือของวันนี้จองไม่ทันแล้ว ร้านนี้ต้องจองล่วงหน้าอย่างน้อย ${formatMinutes(restaurant.min_lead_minutes)}`,
+              hint: "เลือกวันถัดไปเพื่อจองตามปกติ",
+              showGrid: false,
+            }
+          : // ติดที่นั่งไม่พอ ยังโชว์ตารางไว้ เพราะตัวเลขที่ว่างช่วยให้ลูกค้าลดจำนวนคนแล้วจองได้
+            { text: `ที่นั่งไม่พอสำหรับ ${n} คนในวันที่เลือก`, hint: "ลองลดจำนวนคน หรือเลือกวันอื่น", showGrid: true };
+  const canGoNextDay = date < addDays(today, 30);
 
   async function submit() {
     if (!startValid || !endValid || submitting) return;
@@ -114,8 +149,13 @@ export function BookingForm({ restaurant, initialDate, editing, onSaved, onCance
       const b = editing
         ? await apiSend<Booking>("PATCH", `/api/bookings/${editing.id}`, body)
         : await apiSend<Booking>("POST", `/api/restaurants/${restaurant.id}/bookings`, body);
+      const when = `${formatDate(b!.start_at)} ${formatTimeRange(b!.start_at, b!.end_at)} · ${n} คน`;
       if (editing) onSaved?.(b!);
       else setBooked(b);
+      showSuccess({
+        title: editing ? "แก้ไขการจองแล้ว" : "จองสำเร็จ",
+        detail: `${restaurant.name}\n${when}`,
+      });
     } catch (err) {
       if (err instanceof ApiError) {
         setFieldErrors(err.fieldErrors);
@@ -131,8 +171,6 @@ export function BookingForm({ restaurant, initialDate, editing, onSaved, onCance
   }
 
   if (booked) return <BookingTicket booking={booked} restaurantName={restaurant.name} onAgain={() => { setBooked(null); setStart(null); load(); }} />;
-
-  const paused = !restaurant.accepting_bookings && !editing;
 
   return (
     <div className="flex flex-col gap-4">
@@ -213,15 +251,30 @@ export function BookingForm({ restaurant, initialDate, editing, onSaved, onCance
         </label>
       </div>
 
-      <SlotGrid
-        slots={slots}
-        loading={!availability && !loadError}
-        loadError={loadError}
-        isSelected={(s) => selected.some((x) => x.start === s.start)}
-        isPickable={(s) => !paused && canStart(s)}
-        onPick={pickStart}
-        dayLabel={dayLabel}
-      />
+      {noSlots && (
+        <div className="flex flex-col items-start gap-2 rounded-[20px] border border-white/95 bg-(--st-butter-bg) px-4 py-3.5 text-sm text-(--st-butter-ink)">
+          <span className="font-heading text-[15px] font-semibold">{noSlots.text}</span>
+          <span>{noSlots.hint}</span>
+          {canGoNextDay && (
+            <Button variant="glass" size="sm" onClick={() => setDate(addDays(date, 1))}>
+              ดูวันถัดไป
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* วันที่เลือกจองไม่ได้ด้วยเหตุผลเรื่องเวลา ก็ไม่ต้องแสดงตาราง ทุกช่องกดไม่ได้และเปลี่ยนอะไรไม่ได้นอกจากเปลี่ยนวัน */}
+      {(noSlots?.showGrid ?? true) && (
+        <SlotGrid
+          slots={slots}
+          loading={!availability && !loadError}
+          loadError={loadError}
+          isSelected={(s) => selected.some((x) => x.start === s.start)}
+          isPickable={(s) => !paused && canStart(s)}
+          onPick={pickSlot}
+          dayLabel={dayLabel}
+        />
+      )}
 
       {error && (
         <div role="alert" className="flex flex-col gap-1 rounded-[18px] border border-(--st-pink-border) bg-(--st-pink-bg) p-3.5 text-sm text-(--btn-danger-ink)">
@@ -273,13 +326,14 @@ function SlotGrid({
   loadError: string | null;
   isSelected: (s: Slot) => boolean;
   isPickable: (s: Slot & { free: number }) => boolean;
-  onPick: (start: string) => void;
+  onPick: (s: Slot) => void;
   dayLabel: (iso: string) => string;
 }) {
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="font-heading text-[15px] font-semibold">ที่ว่างรายช่วง 30 นาที</span>
+        <span className="order-last w-full text-xs text-(--ink-2)">กดช่องแรกได้ 30 นาที กดช่องถัดไปเพื่อขยายช่วง</span>
         <span className="flex gap-2.5 text-xs text-(--ink-2)">
           <span className="flex items-center gap-1">
             <span className="size-2.5 rounded-[3px] border border-(--st-butter-ink)/30 bg-(--st-butter-bg)" />
@@ -301,18 +355,18 @@ function SlotGrid({
         <div className="grid max-h-[248px] grid-cols-3 gap-2 overflow-y-auto p-0.5">
           {slots.map((s) => {
             const sel = isSelected(s);
-            const tone =
-              s.free === 0
-                ? "bg-white/45 text-(--ink-disabled)"
-                : s.limited
-                  ? "bg-(--st-butter-bg) text-(--st-butter-ink)"
-                  : "bg-white/80 text-(--ink)";
+            // ช่องที่กดไม่ได้ต้องดูต่างจากช่องที่กดได้ชัดเจน ไม่งั้นช่องที่ "ว่าง 24 ที่" แต่เลยเวลาจองจะดูเหมือนกดได้
+            const tone = !isPickable(s)
+              ? "bg-white/40 text-(--ink-disabled) opacity-70"
+              : s.limited
+                ? "bg-(--st-butter-bg) text-(--st-butter-ink)"
+                : "bg-white/80 text-(--ink)";
             return (
               <button
                 key={s.start}
                 type="button"
                 disabled={!isPickable(s)}
-                onClick={() => onPick(s.start)}
+                onClick={() => onPick(s)}
                 aria-pressed={sel}
                 aria-label={`${formatTime(s.start)}${dayLabel(s.start)} ว่าง ${s.free} ที่`}
                 className={`flex min-h-14 flex-col justify-center rounded-2xl border border-white/95 px-3 py-1.5 text-left ${tone} ${

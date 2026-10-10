@@ -5,9 +5,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "sonner";
 
 import { Pill } from "@/components/pill";
+import { useSuccessDialog } from "@/components/success-dialog";
 import { Button } from "@/components/ui/button";
 import { apiSend } from "@/lib/api-client";
 import { ApiError, problemMessage } from "@/lib/problem";
@@ -24,6 +24,7 @@ type Props =
 
 export function RestaurantForm(props: Props) {
   const router = useRouter();
+  const showSuccess = useSuccessDialog();
   const editing = props.mode === "edit" ? props.restaurant : null;
 
   const [name, setName] = useState(editing?.name ?? "");
@@ -78,7 +79,7 @@ export function RestaurantForm(props: Props) {
     try {
       if (editing) {
         await apiSend("PATCH", `/api/restaurants/${editing.id}`, { name, description, category_ids: categoryIds });
-        toast.success("บันทึกข้อมูลร้านแล้ว");
+        showSuccess({ title: "บันทึกข้อมูลร้านแล้ว", detail: name });
         router.push(`/my/restaurants/${editing.id}`);
         router.refresh();
         return;
@@ -100,7 +101,7 @@ export function RestaurantForm(props: Props) {
       );
       images.forEach((i) => fd.append("images", i.file));
       const created = await apiSend<RestaurantDetail>("POST", "/api/restaurants", fd);
-      toast.success("สร้างร้านแล้ว");
+      showSuccess({ title: "สร้างร้านแล้ว", detail: `${name}\nเพิ่มรูปและตั้งค่าเพิ่มเติมได้ในหน้าจัดการร้าน` });
       router.push(`/my/restaurants/${created!.id}`);
       router.refresh();
     } catch (err) {

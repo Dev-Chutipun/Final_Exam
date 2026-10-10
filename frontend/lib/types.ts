@@ -90,20 +90,30 @@ export type MyRestaurant = {
   upcoming_count: number;
 };
 
+export type RestaurantBooking = {
+  id: number;
+  start_at: string;
+  end_at: string;
+  party_size: number;
+  status: "active" | "cancelled";
+  customer_display_name: string;
+};
+
+/** มุมมองรายวันของเจ้าของร้าน (ส่ง date) — มี peak เพราะวัดได้ในวันทำการเดียว */
 export type DailyBookings = {
   restaurant_id: number;
   date: string;
   capacity: number;
   peak: number;
   peak_at: string | null;
-  items: {
-    id: number;
-    start_at: string;
-    end_at: string;
-    party_size: number;
-    status: "active" | "cancelled";
-    customer_display_name: string;
-  }[];
+  items: RestaurantBooking[];
+};
+
+/** รายการการจองทุกวันของร้าน แบ่งหน้า (ส่ง tab) */
+export type RestaurantBookings = Page<RestaurantBooking> & {
+  restaurant_id: number;
+  capacity: number;
+  counts: { upcoming: number; past: number; cancelled: number };
 };
 
 export type SettingsConflict = { booking_id: number; start_at: string; end_at: string; reason: "capacity" | "opening_hours" };
