@@ -75,15 +75,27 @@ type Detail struct {
 	Latitude            *float64   `json:"latitude"` // null คู่กับ longitude เมื่อไม่ระบุที่ตั้ง
 	Longitude           *float64   `json:"longitude"`
 	AvgRating           *float64   `json:"avg_rating"`
-	ReviewCount         int        `json:"review_count"`
-	IsOwner             bool       `json:"is_owner"` // ใช้ซ่อนหรือแสดงปุ่มเท่านั้น สิทธิ์จริงตัดสินที่แต่ละ endpoint
-	MyReview            *MyReview  `json:"my_review"`
+	// ค่าเฉลี่ยรายด้านของทุกรีวิวในร้าน null เมื่อยังไม่มีรีวิว
+	AspectAverages *ReviewAspects `json:"aspect_averages"`
+	ReviewCount    int            `json:"review_count"`
+	IsOwner        bool           `json:"is_owner"` // ใช้ซ่อนหรือแสดงปุ่มเท่านั้น สิทธิ์จริงตัดสินที่แต่ละ endpoint
+	MyReview       *MyReview      `json:"my_review"`
+}
+
+// ReviewAspects คือคะแนน 4 ด้านของรีวิว (ประกาศซ้ำในแพ็กเกจนี้แบบเดียวกับ Category
+// เพื่อไม่ให้ restaurant ต้องพึ่ง review ซึ่งเป็นคนละส่วนของระบบ)
+type ReviewAspects struct {
+	Food     float64 `json:"food"`
+	Ambience float64 `json:"ambience"`
+	Service  float64 `json:"service"`
+	Value    float64 `json:"value"`
 }
 
 type MyReview struct {
-	ID      int64  `json:"id"`
-	Rating  int    `json:"rating"`
-	Comment string `json:"comment"`
+	ID      int64         `json:"id"`
+	Rating  float64       `json:"rating"` // คะแนนรวมที่ฐานข้อมูลคำนวณจาก 4 ด้าน
+	Aspects ReviewAspects `json:"aspects"`
+	Comment string        `json:"comment"`
 }
 
 // MyRestaurant คือรายการใน GET /api/me/restaurants
@@ -246,24 +258,33 @@ func (s *Service) Create(ctx context.Context, ownerID int64, in NewRestaurant, n
 // Detail คืนรายละเอียดร้าน viewer = 0 คือไม่ได้ login (ร้านถูกลบ → 404)
 func (s *Service) Detail(ctx context.Context, restaurantID, viewer int64) (Detail, error) {
 	d := Detail{Categories: []Category{}, ImageIDs: []int64{}}
+	// ค่าเฉลี่ยรายด้านเป็น NULL พร้อมกันทั้งสี่เมื่อร้านยังไม่มีรีวิว
+	var food, ambience, service, value *float64
 	err := s.Pool.QueryRow(ctx, `
 		SELECT r.id, r.name, r.description, r.capacity,
 		       to_char(r.open_time, 'HH24:MI'), to_char(r.close_time, 'HH24:MI'),
 		       r.cancel_window_minutes, r.min_lead_minutes, r.accepting_bookings, r.owner_id = $2,
 		       r.address, r.latitude, r.longitude,
 		       (SELECT ROUND(AVG(rating), 1)::float8 FROM reviews WHERE restaurant_id = r.id),
-		       (SELECT count(*) FROM reviews WHERE restaurant_id = r.id)
+		       (SELECT count(*) FROM reviews WHERE restaurant_id = r.id),
+		       (SELECT ROUND(AVG(rating_food), 1)::float8     FROM reviews WHERE restaurant_id = r.id),
+		       (SELECT ROUND(AVG(rating_ambience), 1)::float8 FROM reviews WHERE restaurant_id = r.id),
+		       (SELECT ROUND(AVG(rating_service), 1)::float8  FROM reviews WHERE restaurant_id = r.id),
+		       (SELECT ROUND(AVG(rating_value), 1)::float8    FROM reviews WHERE restaurant_id = r.id)
 		  FROM restaurants r
 		 WHERE r.id = $1 AND r.deleted_at IS NULL`, restaurantID, viewer).
 		Scan(&d.ID, &d.Name, &d.Description, &d.Capacity, &d.OpenTime, &d.CloseTime,
 			&d.CancelWindowMinutes, &d.MinLeadMinutes, &d.AcceptingBookings, &d.IsOwner,
 			&d.Address, &d.Latitude, &d.Longitude,
-			&d.AvgRating, &d.ReviewCount)
+			&d.AvgRating, &d.ReviewCount, &food, &ambience, &service, &value)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, httpx.New("not-found", "ไม่พบร้านนี้")
 	}
 	if err != nil {
 		return d, err
+	}
+	if food != nil {
+		d.AspectAverages = &ReviewAspects{Food: *food, Ambience: *ambience, Service: *service, Value: *value}
 	}
 
 	rows, err := s.Pool.Query(ctx, `
@@ -288,9 +309,11 @@ func (s *Service) Detail(ctx context.Context, restaurantID, viewer int64) (Detai
 	// รีวิวของผู้ใช้ปัจจุบัน (รายการรีวิวแบ่งหน้าอาจไม่มีรีวิวนี้ในหน้าแรก)
 	if viewer != 0 {
 		var mr MyReview
-		err := s.Pool.QueryRow(ctx,
-			`SELECT id, rating, comment FROM reviews WHERE restaurant_id = $1 AND user_id = $2`,
-			restaurantID, viewer).Scan(&mr.ID, &mr.Rating, &mr.Comment)
+		err := s.Pool.QueryRow(ctx, `
+			SELECT id, rating::float8, rating_food, rating_ambience, rating_service, rating_value, comment
+			  FROM reviews WHERE restaurant_id = $1 AND user_id = $2`,
+			restaurantID, viewer).
+			Scan(&mr.ID, &mr.Rating, &mr.Aspects.Food, &mr.Aspects.Ambience, &mr.Aspects.Service, &mr.Aspects.Value, &mr.Comment)
 		if err == nil {
 			d.MyReview = &mr
 		} else if !errors.Is(err, pgx.ErrNoRows) {

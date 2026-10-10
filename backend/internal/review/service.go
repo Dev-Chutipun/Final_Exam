@@ -21,9 +21,36 @@ type Service struct {
 	Pool *pgxpool.Pool
 }
 
+// Aspects คือคะแนน 4 ด้านที่ผู้รีวิวให้ ทุกด้านเป็นจำนวนเต็ม 1–5
+type Aspects struct {
+	Food     int `json:"food"`
+	Ambience int `json:"ambience"`
+	Service  int `json:"service"`
+	Value    int `json:"value"`
+}
+
+// aspectFields จับคู่ชื่อฟิลด์ใน JSON กับตัวชี้ไปยังค่าในโครงสร้าง ใช้ทั้งตอนตรวจและตอนอ่านค่าเฉลี่ย
+func (a *Aspects) fields() []struct {
+	name string
+	val  *int
+} {
+	return []struct {
+		name string
+		val  *int
+	}{
+		{"food", &a.Food},
+		{"ambience", &a.Ambience},
+		{"service", &a.Service},
+		{"value", &a.Value},
+	}
+}
+
 type Review struct {
-	ID          int64     `json:"id"`
-	Rating      int       `json:"rating"`
+	ID int64 `json:"id"`
+	// คะแนนรวมเป็นค่าเฉลี่ยของ 4 ด้าน ฐานข้อมูลคำนวณให้เองด้วย generated column
+	// จึงไม่มีทางที่คะแนนรวมกับรายด้านจะไม่ตรงกัน
+	Rating      float64   `json:"rating"`
+	Aspects     Aspects   `json:"aspects"`
 	Comment     string    `json:"comment"`
 	DisplayName string    `json:"display_name"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -33,15 +60,17 @@ type Review struct {
 
 // Input คือ body ของการสร้างหรือแก้รีวิว
 type Input struct {
-	Rating  int    `json:"rating"`
-	Comment string `json:"comment"`
+	Aspects Aspects `json:"aspects"`
+	Comment string  `json:"comment"`
 }
 
 // validate ตรวจรูปแบบ (400) และคืน comment ที่ตัดช่องว่างหัวท้ายแล้ว
 func (in Input) validate() (Input, error) {
 	var errs []httpx.FieldError
-	if in.Rating < 1 || in.Rating > 5 {
-		errs = append(errs, httpx.FieldError{Field: "rating", Message: "ต้องเป็นจำนวนเต็ม 1–5"})
+	for _, f := range in.Aspects.fields() {
+		if *f.val < 1 || *f.val > 5 {
+			errs = append(errs, httpx.FieldError{Field: "aspects." + f.name, Message: "ต้องเป็นจำนวนเต็ม 1–5"})
+		}
 	}
 	in.Comment = strings.TrimSpace(in.Comment)
 	if n := utf8.RuneCountInString(in.Comment); n < 1 || n > 1000 {
@@ -73,14 +102,18 @@ func (s *Service) Create(ctx context.Context, userID, restaurantID int64, in Inp
 		return Review{}, httpx.New("own-restaurant-review", "รีวิวร้านของตัวเองไม่ได้")
 	}
 
-	rv := Review{Rating: in.Rating, Comment: in.Comment, IsMine: true}
+	rv := Review{Aspects: in.Aspects, Comment: in.Comment, IsMine: true}
+	a := in.Aspects
 	err = s.Pool.QueryRow(ctx, `
 		WITH ins AS (
-		  INSERT INTO reviews (restaurant_id, user_id, rating, comment, created_at, updated_at)
-		  VALUES ($1, $2, $3, $4, $5, $5)
-		  RETURNING id, user_id, created_at)
-		SELECT ins.id, ins.created_at, u.display_name FROM ins JOIN users u ON u.id = ins.user_id`,
-		restaurantID, userID, in.Rating, in.Comment, now).Scan(&rv.ID, &rv.CreatedAt, &rv.DisplayName)
+		  INSERT INTO reviews (restaurant_id, user_id, rating_food, rating_ambience, rating_service, rating_value,
+		                       comment, created_at, updated_at)
+		  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		  RETURNING id, user_id, rating, created_at)
+		SELECT ins.id, ins.rating::float8, ins.created_at, u.display_name
+		  FROM ins JOIN users u ON u.id = ins.user_id`,
+		restaurantID, userID, a.Food, a.Ambience, a.Service, a.Value, in.Comment, now).
+		Scan(&rv.ID, &rv.Rating, &rv.CreatedAt, &rv.DisplayName)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
 		return Review{}, httpx.New("already-reviewed", "คุณรีวิวร้านนี้แล้ว แก้ไขรีวิวเดิมได้")
@@ -100,14 +133,18 @@ func (s *Service) Update(ctx context.Context, userID, reviewID int64, in Input, 
 	}
 	rv := Review{IsMine: true}
 	var updatedAt time.Time
+	a := in.Aspects
 	err = s.Pool.QueryRow(ctx, `
-		UPDATE reviews v SET rating = $3, comment = $4, updated_at = $5
+		UPDATE reviews v SET rating_food = $3, rating_ambience = $4, rating_service = $5, rating_value = $6,
+		                     comment = $7, updated_at = $8
 		  FROM restaurants r, users u
 		 WHERE v.id = $1 AND v.user_id = $2
 		   AND r.id = v.restaurant_id AND r.deleted_at IS NULL AND u.id = v.user_id
-		RETURNING v.id, v.rating, v.comment, u.display_name, v.created_at, v.updated_at`,
-		reviewID, userID, in.Rating, in.Comment, now).
-		Scan(&rv.ID, &rv.Rating, &rv.Comment, &rv.DisplayName, &rv.CreatedAt, &updatedAt)
+		RETURNING v.id, v.rating::float8, v.rating_food, v.rating_ambience, v.rating_service, v.rating_value,
+		          v.comment, u.display_name, v.created_at, v.updated_at`,
+		reviewID, userID, a.Food, a.Ambience, a.Service, a.Value, in.Comment, now).
+		Scan(&rv.ID, &rv.Rating, &rv.Aspects.Food, &rv.Aspects.Ambience, &rv.Aspects.Service, &rv.Aspects.Value,
+			&rv.Comment, &rv.DisplayName, &rv.CreatedAt, &updatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Review{}, httpx.New("not-found", "ไม่พบรีวิวนี้")
 	}
@@ -149,7 +186,8 @@ func (s *Service) List(ctx context.Context, restaurantID, viewer int64, page htt
 		return res, err
 	}
 	rows, err := s.Pool.Query(ctx, `
-		SELECT v.id, v.rating, v.comment, u.display_name, v.created_at,
+		SELECT v.id, v.rating::float8, v.rating_food, v.rating_ambience, v.rating_service, v.rating_value,
+		       v.comment, u.display_name, v.created_at,
 		       v.updated_at > v.created_at, v.user_id = $2
 		  FROM reviews v JOIN users u ON u.id = v.user_id
 		 WHERE v.restaurant_id = $1
@@ -161,7 +199,8 @@ func (s *Service) List(ctx context.Context, restaurantID, viewer int64, page htt
 	}
 	items, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Review, error) {
 		var rv Review
-		err := row.Scan(&rv.ID, &rv.Rating, &rv.Comment, &rv.DisplayName, &rv.CreatedAt, &rv.Edited, &rv.IsMine)
+		err := row.Scan(&rv.ID, &rv.Rating, &rv.Aspects.Food, &rv.Aspects.Ambience, &rv.Aspects.Service, &rv.Aspects.Value,
+			&rv.Comment, &rv.DisplayName, &rv.CreatedAt, &rv.Edited, &rv.IsMine)
 		rv.CreatedAt = rv.CreatedAt.In(booking.Bangkok)
 		return rv, err
 	})

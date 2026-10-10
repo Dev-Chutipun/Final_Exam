@@ -38,12 +38,24 @@ export type RestaurantDetail = {
   avg_rating: number | null;
   review_count: number;
   is_owner: boolean;
-  my_review: { id: number; rating: number; comment: string } | null;
+  aspect_averages: ReviewAspects | null;
+  my_review: { id: number; rating: number; aspects: ReviewAspects; comment: string } | null;
 };
+
+/** คะแนน 4 ด้านที่ผู้รีวิวให้ · คะแนนรวมคือค่าเฉลี่ยของสี่ค่านี้ ฐานข้อมูลคำนวณให้ */
+export type ReviewAspects = { food: number; ambience: number; service: number; value: number };
+
+export const ASPECTS = [
+  { key: "food", label: "อาหาร" },
+  { key: "ambience", label: "บรรยากาศ" },
+  { key: "service", label: "บริการ" },
+  { key: "value", label: "ความคุ้มค่า" },
+] as const satisfies readonly { key: keyof ReviewAspects; label: string }[];
 
 export type Review = {
   id: number;
   rating: number;
+  aspects: ReviewAspects;
   comment: string;
   display_name: string;
   created_at: string;

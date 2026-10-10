@@ -286,7 +286,8 @@ func TestDetailR1AndUpdateInfo(t *testing.T) {
 	e := newEnv(t)
 	owner, me := e.user("owner"), e.user("me")
 	r := e.createViaAPI(owner, "ร้าน")
-	e.exec(`INSERT INTO reviews (restaurant_id, user_id, rating, comment) VALUES ($1, $2, 4, 'ดี')`, r, me)
+	e.exec(`INSERT INTO reviews (restaurant_id, user_id, rating_food, rating_ambience, rating_service, rating_value, comment)
+	        VALUES ($1, $2, 4, 4, 4, 4, 'ดี')`, r, me)
 
 	_, _, anon := e.do("GET", "/api/restaurants/"+itoa(r), 0, "")
 	if anon["is_owner"] != false || anon["my_review"] != nil || anon["avg_rating"] != 4.0 || anon["review_count"] != float64(1) {
@@ -647,5 +648,39 @@ func TestRestaurantAddressL5(t *testing.T) {
 	status, _, body, _ = e.send(multipartReq("POST", "/api/restaurants", owner, data("ร้านมีแต่ที่อยู่", "ถนนเยาวราช"), img("a.png")))
 	if status != 201 || body["address"] != "ถนนเยาวราช" || body["latitude"] != nil {
 		t.Errorf("ที่อยู่อย่างเดียว: %d %v", status, body)
+	}
+}
+
+// V14 ค่าเฉลี่ยรายด้านและรีวิวของฉันในรายละเอียดร้าน (คู่กับ V13 ของแพ็กเกจ review)
+func TestDetailAspectAveragesV14(t *testing.T) {
+	e := newEnv(t)
+	owner, a, b := e.user("owner"), e.user("แอน"), e.user("บี")
+	r := e.createViaAPI(owner, "ร้านมีรีวิว")
+
+	// ร้านยังไม่มีรีวิว → null ไม่ใช่ศูนย์ (หน้าเว็บจะได้ไม่โชว์ "0.0 ดาว")
+	_, _, empty := e.do("GET", "/api/restaurants/"+itoa(r), a, "")
+	if empty["aspect_averages"] != nil || empty["avg_rating"] != nil || empty["my_review"] != nil {
+		t.Fatalf("ร้านไม่มีรีวิว: %v", empty)
+	}
+
+	rate := func(user int64, food, ambience, service, value int) {
+		e.exec(`INSERT INTO reviews (restaurant_id, user_id, rating_food, rating_ambience, rating_service, rating_value, comment)
+		        VALUES ($1, $2, $3, $4, $5, $6, 'ok')`, r, user, food, ambience, service, value)
+	}
+	rate(a, 5, 4, 3, 4) // รวม 4.00
+	rate(b, 3, 4, 5, 4) // รวม 4.00
+
+	_, _, d := e.do("GET", "/api/restaurants/"+itoa(r), a, "")
+	avg := d["aspect_averages"].(map[string]any)
+	// อาหารกับบริการเฉลี่ยคนละทาง แต่คะแนนรวมเท่ากัน จึงพิสูจน์ว่าแยกรายด้านมีประโยชน์จริง
+	if avg["food"] != float64(4) || avg["ambience"] != float64(4) || avg["service"] != float64(4) || avg["value"] != float64(4) {
+		t.Errorf("aspect_averages = %v", avg)
+	}
+	if d["avg_rating"] != 4.0 || d["review_count"] != float64(2) {
+		t.Errorf("avg = %v count = %v", d["avg_rating"], d["review_count"])
+	}
+	mine := d["my_review"].(map[string]any)
+	if mine["rating"] != 4.0 || mine["aspects"].(map[string]any)["service"] != float64(3) {
+		t.Errorf("my_review = %v", mine)
 	}
 }

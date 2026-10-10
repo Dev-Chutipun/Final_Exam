@@ -561,16 +561,36 @@ func (s *seeder) reviews() error {
 		{"jok", "june", 4, 13, "ผัดคะน้าปลาเค็มไฟแรงหอมกระทะ"},
 		{"jok", "krit", 5, 17, "เปิดถึงตีสาม ช่วยชีวิตคนทำงานกะดึก"},
 	}
-	for _, r := range list {
+	for i, r := range list {
 		created := s.now.Add(-time.Duration(r.daysAgo) * 24 * time.Hour)
+		a := aspectsAround(r.rating, i)
 		if _, err := s.tx.Exec(s.ctx, `
-			INSERT INTO reviews (restaurant_id, user_id, rating, comment, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $5)`,
-			s.rest[r.rest], s.users[r.user], r.rating, r.comment, created); err != nil {
+			INSERT INTO reviews (restaurant_id, user_id, rating_food, rating_ambience, rating_service, rating_value,
+			                     comment, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+			s.rest[r.rest], s.users[r.user], a[0], a[1], a[2], a[3], r.comment, created); err != nil {
 			return fmt.Errorf("review %s/%s: %w", r.rest, r.user, err)
 		}
 	}
 	return nil
+}
+
+// aspectsAround กระจายคะแนน 4 ด้านรอบ ๆ คะแนนที่ตั้งใจไว้ แบบไม่สุ่ม (seed เดิมต้องได้ผลเดิมเสมอ)
+// ด้านที่ i เลือกจากตารางออฟเซ็ต แล้วหนีบให้อยู่ในช่วง 1–5 · คะแนนรวมที่ฐานข้อมูลคำนวณจะใกล้ rating เดิม
+func aspectsAround(rating, i int) [4]int {
+	// แต่ละแถวบวกลบไม่เกิน 1 และรวมกันได้ 0 คะแนนเฉลี่ยจึงไม่เลื่อนจาก rating
+	offsets := [4][4]int{
+		{0, 0, 0, 0},
+		{1, 0, -1, 0},
+		{0, -1, 1, 0},
+		{-1, 1, 0, 0},
+	}
+	row := offsets[i%len(offsets)]
+	var out [4]int
+	for k := range out {
+		out[k] = min(5, max(1, rating+row[k]))
+	}
+	return out
 }
 
 // gradientPNG สร้างภาพไล่สี 135° สามจุดขนาด 640×400

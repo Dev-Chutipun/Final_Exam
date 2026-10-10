@@ -72,8 +72,10 @@ func (e *env) rate(restaurantID, userID int64, rating int) {
 	e.t.Helper()
 	e.clock++
 	ts := testNow.Add(time.Duration(e.clock) * time.Minute)
-	e.exec(`INSERT INTO reviews (restaurant_id, user_id, rating, comment, created_at, updated_at)
-	        VALUES ($1, $2, $3, 'ok', $4, $4)`, restaurantID, userID, rating, ts)
+	// ให้ทุกด้านเท่ากัน คะแนนรวมที่ฐานข้อมูลคำนวณจึงเท่ากับ rating พอดี
+	e.exec(`INSERT INTO reviews (restaurant_id, user_id, rating_food, rating_ambience, rating_service, rating_value,
+	                             comment, created_at, updated_at)
+	        VALUES ($1, $2, $3, $3, $3, $3, 'ok', $4, $4)`, restaurantID, userID, rating, ts)
 }
 
 // manyRatings ใส่รีวิวจากผู้ใช้ใหม่ n คน คะแนน rating
@@ -84,8 +86,9 @@ func (e *env) manyRatings(restaurantID int64, n, rating int, prefix string) {
 		  INSERT INTO users (issuer, subject, display_name)
 		  SELECT 'test://local', $3 || g, $3 || g FROM generate_series(1, $2::int) g
 		  RETURNING id)
-		INSERT INTO reviews (restaurant_id, user_id, rating, comment, created_at, updated_at)
-		SELECT $1, id, $4, 'ok', $5, $5 FROM u`,
+		INSERT INTO reviews (restaurant_id, user_id, rating_food, rating_ambience, rating_service, rating_value,
+		                     comment, created_at, updated_at)
+		SELECT $1, id, $4, $4, $4, $4, 'ok', $5, $5 FROM u`,
 		restaurantID, n, prefix, rating, testNow)
 }
 
@@ -121,8 +124,9 @@ func (e *env) do(method, path string, user int64, body string) (int, string, map
 
 func itoa(id int64) string { return strconv.FormatInt(id, 10) }
 
+// reviewBody ให้ทุกด้านเท่ากัน คะแนนรวมที่ฐานข้อมูลคำนวณจึงเท่ากับค่าที่ส่งมาพอดี
 func reviewBody(rating any, comment string) string {
-	return fmt.Sprintf(`{"rating": %v, "comment": %q}`, rating, comment)
+	return fmt.Sprintf(`{"aspects": {"food": %[1]v, "ambience": %[1]v, "service": %[1]v, "value": %[1]v}, "comment": %[2]q}`, rating, comment)
 }
 
 // list คืน id ของร้านตามลำดับจาก GET /api/restaurants
@@ -196,7 +200,7 @@ func TestReviewV3V4V5(t *testing.T) {
 		t.Errorf("update: %d %v", status, body)
 	}
 	reviewID, _ := strconv.ParseInt(id, 10, 64)
-	rv, err := e.svc.Update(context.Background(), me, reviewID, review.Input{Rating: 4, Comment: "แก้อีกรอบ"}, testNow.Add(time.Hour))
+	rv, err := e.svc.Update(context.Background(), me, reviewID, review.Input{Aspects: review.Aspects{Food: 4, Ambience: 4, Service: 4, Value: 4}, Comment: "แก้อีกรอบ"}, testNow.Add(time.Hour))
 	if err != nil || !rv.Edited {
 		t.Errorf("edited = %v, err %v", rv.Edited, err)
 	}
@@ -433,7 +437,7 @@ func TestConcurrentK3DuplicateReview(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			_, err := e.svc.Create(context.Background(), me, r, review.Input{Rating: 5, Comment: "พร้อมกัน"}, testNow)
+			_, err := e.svc.Create(context.Background(), me, r, review.Input{Aspects: review.Aspects{Food: 5, Ambience: 5, Service: 5, Value: 5}, Comment: "พร้อมกัน"}, testNow)
 			switch {
 			case err == nil:
 				created.Add(1)
@@ -453,5 +457,36 @@ func TestConcurrentK3DuplicateReview(t *testing.T) {
 	}
 	if created.Load() != 1 || dup.Load() != 1 || rows != 1 {
 		t.Errorf("created %d dup %d rows %d", created.Load(), dup.Load(), rows)
+	}
+}
+
+// V13 คะแนน 4 ด้าน: คะแนนรวมเป็นค่าเฉลี่ยที่ฐานข้อมูลคำนวณให้ และด้านที่ขาดหรือนอกช่วง → 400
+func TestReviewAspectsV13(t *testing.T) {
+	e := newEnv(t)
+	owner, me := e.user("owner"), e.user("me")
+	r := e.restaurant(owner)
+	path := "/api/restaurants/" + itoa(r) + "/reviews"
+
+	// ส่งไม่ครบ 4 ด้าน หรือค่านอกช่วง → 400 พร้อมบอกชื่อด้านที่ผิด
+	for _, body := range []string{
+		`{"aspects": {"food": 5, "ambience": 5, "service": 5}, "comment": "ขาดด้านความคุ้มค่า"}`,
+		`{"aspects": {"food": 0, "ambience": 5, "service": 5, "value": 5}, "comment": "ศูนย์"}`,
+		`{"aspects": {"food": 6, "ambience": 5, "service": 5, "value": 5}, "comment": "เกินห้า"}`,
+		`{"comment": "ไม่ส่ง aspects เลย"}`,
+	} {
+		if status, typ, _ := e.do(http.MethodPost, path, me, body); status != 400 || typ != "/problems/validation" {
+			t.Errorf("%s: %d %s", body, status, typ)
+		}
+	}
+
+	// 5 + 4 + 3 + 4 = 16 / 4 = 4.00 ฐานข้อมูลคำนวณให้ ไม่ได้รับจาก body
+	status, _, body := e.do(http.MethodPost, path,
+		me, `{"aspects": {"food": 5, "ambience": 4, "service": 3, "value": 4}, "comment": "อาหารดี บริการช้า"}`)
+	if status != 201 || body["rating"] != 4.0 {
+		t.Fatalf("สร้าง: %d rating=%v", status, body["rating"])
+	}
+	asp := body["aspects"].(map[string]any)
+	if asp["food"] != float64(5) || asp["service"] != float64(3) {
+		t.Errorf("aspects = %v", asp)
 	}
 }

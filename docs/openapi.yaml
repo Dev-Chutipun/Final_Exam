@@ -874,13 +874,19 @@ components:
         avg_rating: { type: [number, 'null'] }
         review_count: { type: integer }
         is_owner: { type: boolean, description: ใช้ซ่อน/แสดงปุ่มเท่านั้น สิทธิ์จริงตรวจที่แต่ละ endpoint }
+        aspect_averages:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/ReviewAspectAverages'
+          description: null เมื่อร้านยังไม่มีรีวิว
         my_review:
           oneOf:
             - type: 'null'
             - type: object
               properties:
                 id: { type: integer }
-                rating: { type: integer }
+                rating: { type: number }
+                aspects: { $ref: '#/components/schemas/ReviewAspects' }
                 comment: { type: string }
 
     RestaurantInfo:
@@ -1057,19 +1063,41 @@ components:
           type: array
           items: { $ref: '#/components/schemas/Slot' }
 
+    ReviewAspects:
+      type: object
+      required: [food, ambience, service, value]
+      additionalProperties: false
+      description: คะแนน 4 ด้าน ทุกด้านเป็นจำนวนเต็ม 1–5 และต้องส่งครบ
+      properties:
+        food: { type: integer, minimum: 1, maximum: 5, description: อาหาร }
+        ambience: { type: integer, minimum: 1, maximum: 5, description: บรรยากาศ }
+        service: { type: integer, minimum: 1, maximum: 5, description: บริการ }
+        value: { type: integer, minimum: 1, maximum: 5, description: ความคุ้มค่า }
+
+    ReviewAspectAverages:
+      type: object
+      description: ค่าเฉลี่ยรายด้านของทุกรีวิวในร้าน (ทศนิยม 1 ตำแหน่ง)
+      properties:
+        food: { type: number }
+        ambience: { type: number }
+        service: { type: number }
+        value: { type: number }
+
     ReviewInput:
       type: object
-      required: [rating, comment]
+      required: [aspects, comment]
       additionalProperties: false
+      description: ไม่รับ rating เพราะคะแนนรวมเป็น generated column ที่คำนวณจาก aspects
       properties:
-        rating: { type: integer, minimum: 1, maximum: 5 }
+        aspects: { $ref: '#/components/schemas/ReviewAspects' }
         comment: { type: string, minLength: 1, maxLength: 1000, description: ตัดช่องว่างหัวท้ายแล้วนับเป็นตัวอักษร }
 
     Review:
       type: object
       properties:
         id: { type: integer }
-        rating: { type: integer }
+        rating: { type: number, description: คะแนนรวม = ค่าเฉลี่ยของ aspects ฐานข้อมูลคำนวณให้ }
+        aspects: { $ref: '#/components/schemas/ReviewAspects' }
         comment: { type: string }
         display_name: { type: string }
         created_at: { type: string, format: date-time }

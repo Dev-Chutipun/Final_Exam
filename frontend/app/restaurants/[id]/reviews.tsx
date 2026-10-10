@@ -14,7 +14,7 @@ import { useSuccessDialog } from "@/components/success-dialog";
 import { apiSend } from "@/lib/api-client";
 import { ApiError, problemMessage } from "@/lib/problem";
 import { formatDate } from "@/lib/time";
-import type { Page, RestaurantDetail, Review } from "@/lib/types";
+import { ASPECTS, type Page, type RestaurantDetail, type Review, type ReviewAspects } from "@/lib/types";
 
 const PAGE_SIZE = 10;
 
@@ -50,16 +50,36 @@ export function Reviews({
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-[22px] font-semibold">รีวิวจากลูกค้า</h2>
         <div className="flex items-center gap-3">
+          {/* เขียน "/ 5" ติดกับตัวเลขเลย กันอ่านสลับกับจำนวนรีวิวด้านล่าง */}
           <span className="font-heading text-[42px] leading-none font-semibold text-(--accent-strong)">
             {restaurant.avg_rating?.toFixed(1) ?? "–"}
+            <span className="text-[22px] font-medium text-(--ink-2)"> / 5</span>
           </span>
           <span className="text-sm leading-snug text-(--ink-2)">
-            เฉลี่ยจาก 5
+            คะแนนเฉลี่ย
             <br />
-            {restaurant.review_count} รีวิว
+            จาก {restaurant.review_count} รีวิว
           </span>
         </div>
       </div>
+
+      {/* แยกรายด้านให้เห็นว่าคะแนนรวมมาจากอะไร เช่น อาหารดีแต่บริการช้า */}
+      {restaurant.aspect_averages && (
+        <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+          {ASPECTS.map((a) => {
+            const score = restaurant.aspect_averages![a.key];
+            return (
+              <div key={a.key} className="flex items-center gap-3">
+                <span className="min-w-[80px] text-sm text-(--ink-2)">{a.label}</span>
+                <span aria-hidden="true" className="h-2 grow overflow-hidden rounded-full bg-(--st-gray-bg)">
+                  <span className="block h-full rounded-full bg-linear-to-r from-(--btn-primary-from) to-(--btn-primary-to)" style={{ width: `${(score / 5) * 100}%` }} />
+                </span>
+                <span className="font-heading min-w-[28px] text-right text-sm font-semibold">{score.toFixed(1)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {restaurant.is_owner ? (
         <p className="rounded-[18px] bg-(--st-peach-bg) px-4 py-3 text-sm text-(--st-peach-ink)">เจ้าของร้านรีวิวร้านของตัวเองไม่ได้</p>
@@ -91,7 +111,7 @@ export function Reviews({
                   <span className="font-heading font-semibold">{r.display_name}</span>
                   <Pill tone="butter">
                     <StarIcon size={13} />
-                    {r.rating}/5
+                    {r.rating.toFixed(1)}/5
                   </Pill>
                   <span className="text-sm text-(--ink-2)">{formatDate(r.created_at)}</span>
                   {r.edited && <span className="text-[13px] text-(--ink-2)">แก้ไขแล้ว</span>}
@@ -161,7 +181,7 @@ function MyReview({
           คุณรีวิวร้านนี้ไว้แล้ว
           <Pill tone="butter">
             <StarIcon size={13} />
-            {mine.rating}/5
+            {mine.rating.toFixed(1)}/5
           </Pill>
         </span>
         <div className="flex gap-2">
@@ -202,20 +222,27 @@ function ReviewForm({
   onCancel?: () => void;
   onChanged: () => Promise<void>;
 }) {
-  const [rating, setRating] = useState(mine?.rating ?? 0);
+  const [aspects, setAspects] = useState<ReviewAspects>(mine?.aspects ?? { food: 0, ambience: 0, service: 0, value: 0 });
   const [comment, setComment] = useState(mine?.comment ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const showSuccess = useSuccessDialog();
+
+  // ต้องให้ครบทั้ง 4 ด้าน เพราะคะแนนรวมคือค่าเฉลี่ยของทั้งสี่ (เซิร์ฟเวอร์ตรวจซ้ำอยู่แล้ว)
+  const complete = ASPECTS.every((a) => aspects[a.key] >= 1);
+  const overall = ASPECTS.reduce((sum, a) => sum + aspects[a.key], 0) / ASPECTS.length;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErrors({});
     try {
-      if (mine) await apiSend("PUT", `/api/reviews/${mine.id}`, { rating, comment });
-      else await apiSend("POST", `/api/restaurants/${restaurantId}/reviews`, { rating, comment });
-      showSuccess({ title: mine ? "บันทึกรีวิวแล้ว" : "ส่งรีวิวแล้ว", detail: `ให้ ${rating} ดาวกับร้านนี้` });
+      if (mine) await apiSend("PUT", `/api/reviews/${mine.id}`, { aspects, comment });
+      else await apiSend("POST", `/api/restaurants/${restaurantId}/reviews`, { aspects, comment });
+      showSuccess({
+        title: mine ? "บันทึกรีวิวแล้ว" : "ส่งรีวิวแล้ว",
+        detail: `คะแนนรวม ${overall.toFixed(1)} จาก 5`,
+      });
       await onChanged();
     } catch (err) {
       if (err instanceof ApiError) setErrors(err.fieldErrors);
@@ -232,22 +259,41 @@ function ReviewForm({
       onSubmit={save}
       className="flex flex-col gap-3 rounded-[22px] border border-white/95 bg-linear-135 from-(--st-peach-bg)/70 to-(--st-lav-bg)/70 p-4.5"
     >
-      <div className="font-heading font-semibold">{mine ? "รีวิวของคุณ" : "เขียนรีวิวของคุณ"}</div>
-      <div className="flex gap-0.5" role="group" aria-label="ให้คะแนน">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <button
-            key={i}
-            type="button"
-            aria-label={`${i} ดาว`}
-            aria-pressed={rating === i}
-            onClick={() => setRating(i)}
-            className="flex size-11 items-center justify-center rounded-xl"
-          >
-            <StarIcon size={30} filled={i <= rating} />
-          </button>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-heading font-semibold">{mine ? "รีวิวของคุณ" : "เขียนรีวิวของคุณ"}</span>
+        {complete && (
+          <Pill tone="butter">
+            <StarIcon size={13} />
+            คะแนนรวม {overall.toFixed(1)}
+          </Pill>
+        )}
+      </div>
+
+      {/* ให้คะแนนทีละด้าน คะแนนรวมไม่ได้กรอกเอง ระบบเฉลี่ยให้ */}
+      <div className="flex flex-col gap-1">
+        {ASPECTS.map((a) => (
+          <div key={a.key} className="flex flex-wrap items-center gap-x-3">
+            <span className="min-w-[88px] text-sm font-semibold">{a.label}</span>
+            <div className="flex gap-0.5" role="group" aria-label={`ให้คะแนนด้าน${a.label}`}>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`${a.label} ${i} ดาว`}
+                  aria-pressed={aspects[a.key] === i}
+                  onClick={() => setAspects((prev) => ({ ...prev, [a.key]: i }))}
+                  className="flex size-10 items-center justify-center rounded-xl"
+                >
+                  <StarIcon size={26} filled={i <= aspects[a.key]} />
+                </button>
+              ))}
+            </div>
+            {errors[`aspects.${a.key}`] && (
+              <span className="text-[13px] font-medium text-(--st-pink-ink)">{errors[`aspects.${a.key}`]}</span>
+            )}
+          </div>
         ))}
       </div>
-      {errors.rating && <span className="text-[13px] font-medium text-(--st-pink-ink)">{errors.rating}</span>}
       <label className="flex flex-col gap-1.5 text-sm font-semibold">
         ข้อความรีวิว
         <textarea
@@ -269,7 +315,7 @@ function ReviewForm({
               ไม่แก้ไข
             </Button>
           )}
-          <Button type="submit" disabled={busy || rating === 0 || length === 0}>
+          <Button type="submit" disabled={busy || !complete || length === 0}>
             {mine ? "บันทึกรีวิว" : "ส่งรีวิว"}
           </Button>
         </div>

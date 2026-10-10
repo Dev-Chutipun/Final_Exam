@@ -238,12 +238,16 @@ Body: ส่งครบ `capacity`, `open_time` (`"HH:MM"`), `close_time`, `can
 
 ### 7.7 รีวิว
 
-**สร้าง — `POST /api/restaurants/{id}/reviews`** Body: `{ "rating": 5, "comment": "..." }`
+**สร้าง — `POST /api/restaurants/{id}/reviews`** Body: `{ "aspects": { "food": 5, "ambience": 4, "service": 3, "value": 4 }, "comment": "..." }`
+
+ผู้รีวิวให้คะแนน **4 ด้าน** คือ `food` (อาหาร), `ambience` (บรรยากาศ), `service` (บริการ), `value` (ความคุ้มค่า)
+`rating` ที่เป็นคะแนนรวมไม่ได้รับจาก body แต่เป็น **generated column** ที่ PostgreSQL คำนวณเป็นค่าเฉลี่ยของทั้งสี่ (`NUMERIC(3,2)`)
+คะแนนรวมกับรายด้านจึงไม่มีทางไม่ตรงกัน ไม่ว่าจะเขียนผ่าน path ไหน และการจัดอันดับแบบ Bayesian ใน §7.8 ยังใช้ `rating` เหมือนเดิม
 
 | ขั้น | ตรวจอะไร | ถ้าไม่ผ่าน |
 |---|---|---|
 | 1 | มี userID | 401 |
-| 2 | `rating` เป็นจำนวนเต็ม 1–5, `comment` หลัง `strings.TrimSpace` ยาว 1–1000 ตัวอักษร (นับเป็น rune) | 400 `validation` |
+| 2 | ทั้ง 4 ด้านเป็นจำนวนเต็ม 1–5 (ขาดด้านใดด้านหนึ่งก็ไม่ผ่าน · ชื่อฟิลด์ใน error คือ `aspects.food` เป็นต้น), `comment` หลัง `strings.TrimSpace` ยาว 1–1000 ตัวอักษร (นับเป็น rune) | 400 `validation` |
 | 3 | ร้านมีอยู่และไม่ถูกลบ | 404 |
 | 4 | ไม่ใช่เจ้าของร้าน (สไลด์ 9) | 403 `own-restaurant-review` |
 | 5 | INSERT เลย ถ้าชน unique (SQLSTATE `23505`) | 409 `already-reviewed` |
@@ -255,7 +259,7 @@ Body: ส่งครบ `capacity`, `open_time` (`"HH:MM"`), `close_time`, `can
 
 **รายการรีวิวของร้าน — `GET /api/restaurants/{id}/reviews?page=1&page_size=10`** (สาธารณะ)
 - เรียง `created_at DESC, id DESC` ตอบ `{ items, page, page_size, total }` (`page_size` สูงสุด 50)
-- แต่ละรายการ: `id`, `rating`, `comment`, `display_name`, `created_at`, `edited` (= `updated_at > created_at`), `is_mine` (`false` เมื่อไม่ได้ login)
+- แต่ละรายการ: `id`, `rating` (คะแนนรวม ทศนิยม 2 ตำแหน่ง), `aspects` (`{ food, ambience, service, value }`), `comment`, `display_name`, `created_at`, `edited` (= `updated_at > created_at`), `is_mine` (`false` เมื่อไม่ได้ login)
 - รีวิวของผู้ใช้ปัจจุบันสำหรับร้านนี้ส่งในรายละเอียดร้านเป็นฟิลด์ `my_review` (ดู `03-restaurants.md`) เพราะรายการแบ่งหน้าอาจไม่มีรีวิวนั้นในหน้าแรก
 - แก้ไขหรือลบรีวิวของร้านที่ถูกลบ → 404
 
@@ -431,7 +435,7 @@ SELECT id, name, capacity, avg_rating, review_count
 
 | # | กรณี | คาด |
 |---|---|---|
-| V1 | rating = 0, 6, 4.5 | 400 |
+| V1 | ด้านใดด้านหนึ่ง = 0, 6, 4.5 หรือส่งไม่ครบ 4 ด้าน | 400 |
 | V2 | comment ว่างหรือมีแต่ช่องว่าง | 400 |
 | V3 | รีวิวร้านตัวเอง | 403 |
 | V4 | รีวิวร้านเดิมครั้งที่สอง | 409 |
@@ -439,6 +443,8 @@ SELECT id, name, capacity, avg_rating, review_count
 | V6 | คะแนน 4, 5, 4 | `avg_rating = 4.3`, `review_count = 3` |
 | V7 | 5.0 จาก 1 รีวิว เทียบ 4.8 จาก 300 รีวิว | ร้าน 300 รีวิวอยู่บน |
 | V8 | ร้านไม่มีรีวิว | อยู่ท้ายสุดใน highest_rated, `avg_rating = null` |
+| V13 | คะแนน 4 ด้านไม่เท่ากัน (5, 4, 3, 4) | `rating = 4.00` ฐานข้อมูลคำนวณให้ · ส่งไม่ครบหรือนอกช่วง 400 |
+| V14 | `aspect_averages` ในรายละเอียดร้าน | ค่าเฉลี่ยรายด้าน · `null` เมื่อร้านยังไม่มีรีวิว |
 | V9 | ร้านที่ค่าทุกอย่างเท่ากัน | ลำดับเหมือนเดิมทุกครั้ง (ตาม `id`) |
 | V10 | most_reviewed เมื่อจำนวนเท่ากัน | ค่าเฉลี่ยสูงกว่าอยู่บน |
 | V11 | รายการรีวิว: `is_mine` ถูกต้องทั้งตอน login และไม่ login, แบ่งหน้าและ `total` ถูกต้อง | ✓ |
