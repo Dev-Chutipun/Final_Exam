@@ -5,6 +5,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CoverImage } from "@/components/cover-image";
+import { FavoriteButton } from "@/components/favorite-button";
 import { StarIcon } from "@/components/icons";
 import { Pill } from "@/components/pill";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,9 @@ import { apiGet, apiGetOrNull, getMe } from "@/lib/api-server";
 import { coverGradient, imageUrl } from "@/lib/cover";
 import { googleMapsUrl, osmEmbedUrl } from "@/lib/location";
 import { formatMinutes, todayInBangkok } from "@/lib/time";
-import type { Page, RestaurantDetail, Review } from "@/lib/types";
+import type { Page, RestaurantDetail, RestaurantListItem, Review } from "@/lib/types";
+
+import { RestaurantCard } from "@/app/restaurant-card";
 
 import { BookingPanel } from "./booking-panel";
 import { Reviews } from "./reviews";
@@ -54,6 +57,7 @@ export default async function RestaurantPage({ params }: Params) {
         alt={`ภาพปกร้าน ${r.name}`}
         className="mt-3.5 min-h-[380px] rounded-[32px] shadow-[0_20px_50px_rgba(250,172,166,0.30)]"
       >
+        {me !== null && <FavoriteButton restaurantId={r.id} initial={r.is_favorite} className="absolute top-5 left-5 size-12!" />}
         {others.length > 0 && (
           <div className="absolute top-5 right-5 hidden gap-2.5 sm:flex">
             {others.map((imgId, i) => (
@@ -161,7 +165,40 @@ export default async function RestaurantPage({ params }: Params) {
           initialDate={todayInBangkok()}
         />
       </div>
+
+      <Nearby restaurant={r} loggedIn={me !== null} />
     </main>
+  );
+}
+
+/**
+ * ร้านอื่นในหมวดเดียวกัน
+ * ใช้ `GET /api/restaurants?category=…` ที่มีอยู่แล้ว ไม่ต้องมี endpoint ใหม่
+ * ดึงเกินมาหนึ่งร้านเผื่อต้องตัดร้านนี้ออก แล้วเอาแค่ 3 ร้านแรก (เรียงตามคะแนน Bayesian เหมือนหน้าแรก)
+ */
+async function Nearby({ restaurant, loggedIn }: { restaurant: RestaurantDetail; loggedIn: boolean }) {
+  const slugs = restaurant.categories.map((c) => c.slug);
+  if (slugs.length === 0) return null;
+
+  const params = new URLSearchParams({ page_size: "4" });
+  for (const s of slugs) params.append("category", s);
+  const data = await apiGet<Page<RestaurantListItem>>(`/api/restaurants?${params}`);
+  const others = data.items.filter((x) => x.id !== restaurant.id).slice(0, 3);
+  if (others.length === 0) return null;
+
+  const names = restaurant.categories.map((c) => c.name_th).join(" · ");
+  return (
+    <section aria-label="ร้านใกล้เคียง" className="mt-7 flex flex-col gap-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="text-[22px] font-semibold">ร้านอื่นในหมวดเดียวกัน</h2>
+        <span className="text-sm text-(--ink-2)">{names}</span>
+      </div>
+      <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+        {others.map((x) => (
+          <RestaurantCard key={x.id} r={x} loggedIn={loggedIn} />
+        ))}
+      </div>
+    </section>
   );
 }
 

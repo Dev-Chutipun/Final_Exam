@@ -30,6 +30,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/me/restaurants", h.mine)
 	mux.HandleFunc("PATCH /api/restaurants/{id}/booking-status", h.bookingStatus)
 	mux.HandleFunc("GET /api/restaurants/{id}/bookings", h.restaurantBookings)
+	mux.HandleFunc("PUT /api/restaurants/{id}/favorite", h.favorite)
+	mux.HandleFunc("DELETE /api/restaurants/{id}/favorite", h.favorite)
+	mux.HandleFunc("GET /api/me/favorites", h.myFavorites)
 }
 
 // PATCH /api/restaurants/{id}/booking-status [B] body { "accepting_bookings": false }
@@ -438,4 +441,38 @@ func (h *Handler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
+// PUT /api/restaurants/{id}/favorite · DELETE เดียวกัน (03 §4.8)
+// สั่งซ้ำได้ผลเท่าเดิม จึงตอบ 200 เสมอ ไม่ใช่ 409
+func (h *Handler) favorite(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(r, "id")
+	if !ok {
+		httpx.Write(w, httpx.New("not-found", "ไม่พบร้านนี้"))
+		return
+	}
+	on := r.Method == http.MethodPut
+	if err := h.Svc.SetFavorite(r.Context(), userID, id, on, h.Now()); err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"id": id, "is_favorite": on})
+}
+
+// GET /api/me/favorites (03 §4.8)
+func (h *Handler) myFavorites(w http.ResponseWriter, r *http.Request) {
+	userID, ok := requireUser(w, r)
+	if !ok {
+		return
+	}
+	list, err := h.Svc.Favorites(r.Context(), userID)
+	if err != nil {
+		httpx.WriteError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, list)
 }

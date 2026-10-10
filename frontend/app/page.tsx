@@ -6,7 +6,7 @@ import { Suspense } from "react";
 
 import { Pill } from "@/components/pill";
 import { Button } from "@/components/ui/button";
-import { apiGet } from "@/lib/api-server";
+import { apiGet, getMe } from "@/lib/api-server";
 import type { Category, Page, RestaurantListItem } from "@/lib/types";
 
 import { RestaurantCard } from "./restaurant-card";
@@ -24,6 +24,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
   const q = (sp.q ?? "").trim().slice(0, 100);
   const selected = ([] as string[]).concat(sp.category ?? []);
 
+  const me = await getMe();
   const categories = await apiGet<Category[]>("/api/categories");
   const known = selected.filter((s) => categories.some((c) => c.slug === s)); // slug ที่ไม่มีจริงตัดทิ้ง
 
@@ -101,7 +102,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
       ) : (
         <div className="mt-11 grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
           {data.items.map((r) => (
-            <RestaurantCard key={r.id} r={r} />
+            <RestaurantCard key={r.id} r={r} loggedIn={me !== null} />
           ))}
         </div>
       )}

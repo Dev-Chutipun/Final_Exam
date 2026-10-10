@@ -332,6 +332,52 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '415': { $ref: '#/components/responses/UnsupportedMediaType' }
 
+  /api/restaurants/{id}/favorite:
+    parameters:
+      - $ref: '#/components/parameters/RestaurantId'
+    put:
+      operationId: addFavorite
+      tags: [restaurants]
+      summary: เพิ่มร้านในรายการที่ชอบ
+      description: สั่งซ้ำได้ผลเท่าเดิม (idempotent) ตอบ 200 เสมอ · เจ้าของกดร้านตัวเองได้
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FavoriteState' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: removeFavorite
+      tags: [restaurants]
+      summary: เอาร้านออกจากรายการที่ชอบ
+      description: สั่งซ้ำได้ผลเท่าเดิม (idempotent) ตอบ 200 เสมอ
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FavoriteState' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/me/favorites:
+    get:
+      operationId: listMyFavorites
+      tags: [restaurants]
+      summary: ร้านที่ชอบของฉัน
+      description: เรียงใหม่สุดก่อน ไม่รวมร้านที่ถูกลบ · ตอบเป็น array ไม่แบ่งหน้า
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/FavoriteRestaurant' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
   /api/restaurants/{id}/bookings:
     parameters:
       - $ref: '#/components/parameters/RestaurantId'
@@ -874,6 +920,7 @@ components:
         avg_rating: { type: [number, 'null'] }
         review_count: { type: integer }
         is_owner: { type: boolean, description: ใช้ซ่อน/แสดงปุ่มเท่านั้น สิทธิ์จริงตรวจที่แต่ละ endpoint }
+        is_favorite: { type: boolean, description: false เสมอเมื่อยังไม่ได้ login }
         aspect_averages:
           oneOf:
             - type: 'null'
@@ -958,6 +1005,25 @@ components:
         avg_rating: { type: [number, 'null'] }
         review_count: { type: integer }
         upcoming_count: { type: integer, description: การจอง active ที่ end_at > now }
+
+    FavoriteState:
+      type: object
+      properties:
+        id: { type: integer }
+        is_favorite: { type: boolean }
+
+    FavoriteRestaurant:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        cover_image_id: { type: [integer, 'null'] }
+        open_time: { $ref: '#/components/schemas/Clock' }
+        close_time: { $ref: '#/components/schemas/Clock' }
+        accepting_bookings: { type: boolean }
+        avg_rating: { type: [number, 'null'] }
+        review_count: { type: integer }
+        favorited_at: { type: string, format: date-time }
 
     RestaurantBooking:
       type: object

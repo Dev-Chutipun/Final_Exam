@@ -1,11 +1,12 @@
 import Link from "next/link";
 
 import { CoverImage } from "@/components/cover-image";
+import { FavoriteButton } from "@/components/favorite-button";
 import { ClockIcon, PeopleIcon, StarIcon } from "@/components/icons";
 import { Pill } from "@/components/pill";
 import type { RestaurantListItem } from "@/lib/types";
 
-export function RestaurantCard({ r }: { r: RestaurantListItem }) {
+export function RestaurantCard({ r, loggedIn }: { r: RestaurantListItem; loggedIn: boolean }) {
   return (
     <Link href={`/restaurants/${r.id}`} className="glass flex flex-col overflow-hidden rounded-(--r-card) p-2.5 transition hover:-translate-y-0.5">
       <CoverImage
@@ -25,6 +26,7 @@ export function RestaurantCard({ r }: { r: RestaurantListItem }) {
             </>
           )}
         </Pill>
+        {loggedIn && <FavoriteButton restaurantId={r.id} initial={r.is_favorite} className="absolute right-3 bottom-3" />}
         {!r.accepting_bookings && (
           <Pill tone="gray" className="absolute top-3 left-3 border border-white/90">
             พักรับจอง

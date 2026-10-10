@@ -78,7 +78,8 @@ type Detail struct {
 	// ค่าเฉลี่ยรายด้านของทุกรีวิวในร้าน null เมื่อยังไม่มีรีวิว
 	AspectAverages *ReviewAspects `json:"aspect_averages"`
 	ReviewCount    int            `json:"review_count"`
-	IsOwner        bool           `json:"is_owner"` // ใช้ซ่อนหรือแสดงปุ่มเท่านั้น สิทธิ์จริงตัดสินที่แต่ละ endpoint
+	IsOwner        bool           `json:"is_owner"`    // ใช้ซ่อนหรือแสดงปุ่มเท่านั้น สิทธิ์จริงตัดสินที่แต่ละ endpoint
+	IsFavorite     bool           `json:"is_favorite"` // false เสมอเมื่อยังไม่ได้ login
 	MyReview       *MyReview      `json:"my_review"`
 }
 
@@ -265,6 +266,7 @@ func (s *Service) Detail(ctx context.Context, restaurantID, viewer int64) (Detai
 		       to_char(r.open_time, 'HH24:MI'), to_char(r.close_time, 'HH24:MI'),
 		       r.cancel_window_minutes, r.min_lead_minutes, r.accepting_bookings, r.owner_id = $2,
 		       r.address, r.latitude, r.longitude,
+		       EXISTS (SELECT 1 FROM favorites f WHERE f.restaurant_id = r.id AND f.user_id = $2),
 		       (SELECT ROUND(AVG(rating), 1)::float8 FROM reviews WHERE restaurant_id = r.id),
 		       (SELECT count(*) FROM reviews WHERE restaurant_id = r.id),
 		       (SELECT ROUND(AVG(rating_food), 1)::float8     FROM reviews WHERE restaurant_id = r.id),
@@ -275,7 +277,7 @@ func (s *Service) Detail(ctx context.Context, restaurantID, viewer int64) (Detai
 		 WHERE r.id = $1 AND r.deleted_at IS NULL`, restaurantID, viewer).
 		Scan(&d.ID, &d.Name, &d.Description, &d.Capacity, &d.OpenTime, &d.CloseTime,
 			&d.CancelWindowMinutes, &d.MinLeadMinutes, &d.AcceptingBookings, &d.IsOwner,
-			&d.Address, &d.Latitude, &d.Longitude,
+			&d.Address, &d.Latitude, &d.Longitude, &d.IsFavorite,
 			&d.AvgRating, &d.ReviewCount, &food, &ambience, &service, &value)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, httpx.New("not-found", "ไม่พบร้านนี้")

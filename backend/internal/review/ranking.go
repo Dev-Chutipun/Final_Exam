@@ -29,6 +29,7 @@ type ListItem struct {
 	Categories        []Category `json:"categories"`
 	CoverImageID      *int64     `json:"cover_image_id"` // รูปที่ id น้อยที่สุดของร้าน
 	IsMine            bool       `json:"is_mine"`
+	IsFavorite        bool       `json:"is_favorite"` // false เสมอเมื่อยังไม่ได้ login
 }
 
 // sorts แมปค่า sort กับ ORDER BY เป็นสตริงคงที่ ทุกแบบมี id เป็นตัวตัดสินสุดท้าย
@@ -138,7 +139,8 @@ func (s *Service) ListRestaurants(ctx context.Context, sort string, f Filter, vi
 		   GROUP BY r.id, g.m
 		)
 		SELECT id, name, capacity, to_char(open_time, 'HH24:MI'), to_char(close_time, 'HH24:MI'),
-		       accepting_bookings, owner_id = $5, review_count, avg_rating
+		       accepting_bookings, owner_id = $5, review_count, avg_rating,
+		       EXISTS (SELECT 1 FROM favorites f WHERE f.restaurant_id = s.id AND f.user_id = $5)
 		  FROM s
 		 ORDER BY `+sorts[sort]+`
 		 LIMIT $3 OFFSET $4`,
@@ -149,7 +151,7 @@ func (s *Service) ListRestaurants(ctx context.Context, sort string, f Filter, vi
 	items, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (ListItem, error) {
 		it := ListItem{Categories: []Category{}}
 		err := row.Scan(&it.ID, &it.Name, &it.Capacity, &it.OpenTime, &it.CloseTime,
-			&it.AcceptingBookings, &it.IsMine, &it.ReviewCount, &it.AvgRating)
+			&it.AcceptingBookings, &it.IsMine, &it.ReviewCount, &it.AvgRating, &it.IsFavorite)
 		return it, err
 	})
 	if err != nil {

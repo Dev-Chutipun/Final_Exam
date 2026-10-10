@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 const links = [
   { href: "/", label: "ร้านอาหาร", login: false },
   { href: "/bookings", label: "การจองของฉัน", login: true },
+  { href: "/favorites", label: "ร้านที่ชอบ", login: true },
   { href: "/my/restaurants", label: "ร้านของฉัน", login: true },
 ];
 

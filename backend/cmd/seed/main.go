@@ -217,7 +217,7 @@ func run(reset bool, imageDir string) error {
 			// ไม่ใช้ RESTART IDENTITY: /api/restaurants/{id}/images/{imageId} ส่ง Cache-Control immutable
 			// ถ้า id เริ่มที่ 1 ใหม่ทุกครั้ง URL เดิมจะชี้รูปใหม่ เบราว์เซอร์ที่เคยเข้าจะเห็นรูปเก่าค้างอยู่
 			if _, err := tx.Exec(ctx, `TRUNCATE users, sessions, restaurants, restaurant_categories,
-				restaurant_images, bookings, reviews CASCADE`); err != nil {
+				restaurant_images, bookings, reviews, favorites CASCADE`); err != nil {
 				return err
 			}
 		} else {
@@ -265,6 +265,9 @@ func (s *seeder) all(issuer string) error {
 		return err
 	}
 	if err := s.reviews(); err != nil {
+		return err
+	}
+	if err := s.favorites(); err != nil {
 		return err
 	}
 	fmt.Printf("seed เสร็จ: ผู้ใช้ %d คน, ร้าน %d ร้าน, รูปจากโฟลเดอร์ %d/%d รูป (อิงเวลา %s)\n",
@@ -625,4 +628,29 @@ func hexColor(s string) color.RGBA {
 	var r, g, b uint8
 	fmt.Sscanf(s, "#%02x%02x%02x", &r, &g, &b)
 	return color.RGBA{r, g, b, 255}
+}
+
+// favorites ใส่ร้านที่ถูกใจให้บัญชีทดสอบ เพื่อให้หน้า "ร้านที่ชอบ" ไม่ว่างตอนเดโม
+func (s *seeder) favorites() error {
+	list := []struct {
+		user string
+		rest []string
+	}{
+		{"chutipun", []string{"klong", "pho", "pizza", "ramen"}},
+		{"usertest", []string{"isan", "seafood", "khaosoi"}},
+		{"kanya", []string{"bingsu", "bakery", "tea"}},
+		{"somsri", []string{"steak", "bbqk"}},
+	}
+	for _, f := range list {
+		for i, key := range f.rest {
+			// ไล่เวลาถอยหลังทีละชั่วโมง รายการจึงเรียงใหม่สุดก่อนได้อย่างคาดเดาได้
+			at := s.now.Add(-time.Duration(i) * time.Hour)
+			if _, err := s.tx.Exec(s.ctx,
+				`INSERT INTO favorites (user_id, restaurant_id, created_at) VALUES ($1, $2, $3)`,
+				s.users[f.user], s.rest[key], at); err != nil {
+				return fmt.Errorf("favorite %s/%s: %w", f.user, key, err)
+			}
+		}
+	}
+	return nil
 }

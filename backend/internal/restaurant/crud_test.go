@@ -684,3 +684,83 @@ func TestDetailAspectAveragesV14(t *testing.T) {
 		t.Errorf("my_review = %v", mine)
 	}
 }
+
+// F1–F5 ร้านที่ถูกใจ: ต้อง login · กดซ้ำได้ · เอาออกซ้ำได้ · เจ้าของกดร้านตัวเองได้ · ร้านที่ถูกลบไม่อยู่ในรายการ
+func TestFavoritesF1toF5(t *testing.T) {
+	e := newEnv(t)
+	owner, me := e.user("owner"), e.user("me")
+	a := e.createViaAPI(owner, "ร้านหนึ่ง")
+	b := e.createViaAPI(owner, "ร้านสอง")
+	fav := func(id int64) string { return "/api/restaurants/" + itoa(id) + "/favorite" }
+
+	// F1 ยังไม่ login → 401
+	if status, typ, _ := e.do("PUT", fav(a), 0, ""); status != 401 || typ != "/problems/unauthenticated" {
+		t.Errorf("F1: %d %s", status, typ)
+	}
+	// ร้านไม่มีอยู่ → 404
+	if status, typ, _ := e.do("PUT", fav(999999), me, ""); status != 404 || typ != "/problems/not-found" {
+		t.Errorf("ร้านไม่มี: %d %s", status, typ)
+	}
+
+	// F2 กดถูกใจซ้ำได้ ไม่ใช่ 409 (primary key ตัดสินความซ้ำ)
+	for range 2 {
+		if status, _, body := e.do("PUT", fav(a), me, ""); status != 200 || body["is_favorite"] != true {
+			t.Errorf("F2: %d %v", status, body)
+		}
+	}
+	if _, _, d := e.do("GET", "/api/restaurants/"+itoa(a), me, ""); d["is_favorite"] != true {
+		t.Errorf("F2 detail: %v", d["is_favorite"])
+	}
+	// คนอื่นยังไม่ได้กด ต้องเห็นเป็น false (ไม่ใช่ของใครก็ได้)
+	if _, _, d := e.do("GET", "/api/restaurants/"+itoa(a), owner, ""); d["is_favorite"] != false {
+		t.Errorf("F2 คนอื่น: %v", d["is_favorite"])
+	}
+
+	// F3 เอาออกซ้ำได้
+	for range 2 {
+		if status, _, body := e.do("DELETE", fav(a), me, ""); status != 200 || body["is_favorite"] != false {
+			t.Errorf("F3: %d %v", status, body)
+		}
+	}
+
+	// F4 เจ้าของกดถูกใจร้านตัวเองได้ (ต่างจากจองและรีวิวที่ห้าม)
+	if status, _, _ := e.do("PUT", fav(a), owner, ""); status != 200 {
+		t.Errorf("F4: %d", status)
+	}
+
+	// F5 รายการของฉันเรียงใหม่สุดก่อน และไม่รวมร้านที่ถูกลบ
+	e.do("PUT", fav(a), me, "")
+	e.do("PUT", fav(b), me, "")
+	_, _, list := e.do("GET", "/api/me/favorites", me, "")
+	if list != nil {
+		t.Fatalf("รายการต้องเป็น array ไม่ใช่ object: %v", list)
+	}
+	names := favoriteNames(t, e, me)
+	if len(names) != 2 || names[0] != "ร้านสอง" || names[1] != "ร้านหนึ่ง" {
+		t.Errorf("F5 ลำดับ = %v", names)
+	}
+	if status, _, body := e.do("DELETE", "/api/restaurants/"+itoa(b), owner, ""); status != 204 {
+		t.Fatalf("ลบร้าน: %d %v", status, body)
+	}
+	if names := favoriteNames(t, e, me); len(names) != 1 || names[0] != "ร้านหนึ่ง" {
+		t.Errorf("F5 หลังลบร้าน = %v", names)
+	}
+}
+
+// favoriteNames อ่าน GET /api/me/favorites ซึ่งตอบเป็น array (e.do แปลงได้เฉพาะ object)
+func favoriteNames(t *testing.T, e *env, user int64) []string {
+	t.Helper()
+	req := httptest.NewRequest("GET", "/api/me/favorites", nil)
+	req.Header.Set("X-Test-User", itoa(user))
+	rec := httptest.NewRecorder()
+	e.server().ServeHTTP(rec, req)
+	var list []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("อ่านรายการถูกใจ: %v (%s)", err, rec.Body.String())
+	}
+	out := make([]string, len(list))
+	for i, f := range list {
+		out[i] = f["name"].(string)
+	}
+	return out
+}

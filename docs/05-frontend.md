@@ -56,8 +56,9 @@
 | Route | อาร์ตบอร์ดอ้างอิง | Render | ใครเข้าได้ | ข้อมูลจาก |
 |---|---|---|---|---|
 | `/` | 1 รายการร้าน | Server + ช่องค้นหา Client | สาธารณะ | `GET /api/restaurants` (`sort`, `page`, `q`, `category` จาก `searchParams`), `GET /api/categories` |
-| `/restaurants/[id]` | 2 รายละเอียดร้าน, 3 สถานะแผงจอง | Server + แผงจองและฟอร์มรีวิวเป็น Client | สาธารณะ | รายละเอียดร้าน, รีวิว, availability (ดึงฝั่ง client เมื่อเปลี่ยนวันที่) |
+| `/restaurants/[id]` | 2 รายละเอียดร้าน, 3 สถานะแผงจอง | Server + แผงจองและฟอร์มรีวิวเป็น Client | สาธารณะ | รายละเอียดร้าน, รีวิว, availability (ดึงฝั่ง client เมื่อเปลี่ยนวันที่), ร้านในหมวดเดียวกันจาก `GET /api/restaurants?category=…` (ไม่มี endpoint ใหม่) |
 | `/bookings` | 4 การจองของฉัน, 8 หน้าต่างยืนยัน | Server + ปุ่มเป็น Client | login | `GET /api/me/bookings` |
+| `/favorites` | — (ต่อยอด) | Server + ปุ่มหัวใจเป็น Client | login | `GET /api/me/favorites` |
 | `/my/restaurants` | 5 ร้านของฉัน | Server | login | `GET /api/me/restaurants` |
 | `/my/restaurants/new` | 6 ฟอร์มสร้างร้าน | Client | login | `POST /api/restaurants` |
 | `/my/restaurants/[id]` | 7 จัดการร้าน, 8 หน้าต่างยืนยัน | Server + ส่วนโต้ตอบ | เจ้าของ | รายละเอียด, ตั้งค่า, รูป, พักรับจอง, ลบ |

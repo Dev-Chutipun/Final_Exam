@@ -18,6 +18,20 @@ export type RestaurantListItem = {
   categories: Category[];
   cover_image_id: number | null;
   is_mine: boolean;
+  is_favorite: boolean;
+};
+
+/** รายการใน GET /api/me/favorites */
+export type FavoriteRestaurant = {
+  id: number;
+  name: string;
+  cover_image_id: number | null;
+  open_time: string;
+  close_time: string;
+  accepting_bookings: boolean;
+  avg_rating: number | null;
+  review_count: number;
+  favorited_at: string;
 };
 
 export type RestaurantDetail = {
@@ -38,6 +52,7 @@ export type RestaurantDetail = {
   avg_rating: number | null;
   review_count: number;
   is_owner: boolean;
+  is_favorite: boolean;
   aspect_averages: ReviewAspects | null;
   my_review: { id: number; rating: number; aspects: ReviewAspects; comment: string } | null;
 };
