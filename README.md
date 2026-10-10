@@ -23,7 +23,7 @@ browser ──► Next.js :3000 ──rewrite /api/*──► Go API :8080 ─�
 
 ## วิธีรันตั้งแต่ clone
 
-**ต้องมี:** Git, Docker (Docker Desktop หรือ Rancher Desktop แบบ dockerd), Go 1.26.6 ขึ้นไป, Node.js 20.9 ขึ้นไป · พอร์ต 3000, 5432, 8080, 8081 ต้องว่าง
+**ต้องมี:** Git, Docker (Docker Desktop หรือ Rancher Desktop แบบ dockerd), Go 1.26.9 ขึ้นไป, Node.js 20.9 ขึ้นไป · พอร์ต 3000, 5432, 8080, 8081 ต้องว่าง
 
 ```powershell
 git clone <repo> devpool; cd devpool
