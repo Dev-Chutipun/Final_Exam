@@ -3,7 +3,7 @@
 // รีวิว (01 §7.7): ฟอร์มเขียน/แก้/ลบ และรายการแบ่งหน้า
 // ส่งข้อมูลผ่าน /api/* แล้ว router.refresh() ให้ Server Component อ่านคะแนนเฉลี่ยและ my_review ใหม่
 import { useRouter } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -29,21 +29,68 @@ export function Reviews({
   initial: Page<Review>;
 }) {
   const router = useRouter();
-  const [data, setData] = useState(initial);
-  const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  const [items, setItems] = useState(initial.items);
+  const [total, setTotal] = useState(initial.total);
+  const [page, setPage] = useState(initial.page);
+  const [loading, setLoading] = useState(false);
+  // สองตัวนี้เก็บ element ไว้ใน state ไม่ใช่ ref เพราะต้องให้ effect รันใหม่เมื่อ element พร้อม
+  const [box, setBox] = useState<HTMLDivElement | null>(null);
+  const [sentinel, setSentinel] = useState<HTMLLIElement | null>(null);
 
-  async function loadPage(page: number) {
+  const done = items.length >= total;
+
+  const fetchPage = useCallback(
+    async (p: number) => {
+      return apiSend<Page<Review>>("GET", `/api/restaurants/${restaurant.id}/reviews?page=${p}&page_size=${PAGE_SIZE}`);
+    },
+    [restaurant.id],
+  );
+
+  const loadMore = useCallback(async () => {
+    setLoading(true);
     try {
-      const d = await apiSend<Page<Review>>("GET", `/api/restaurants/${restaurant.id}/reviews?page=${page}&page_size=${PAGE_SIZE}`);
-      if (d) setData(d);
+      const d = await fetchPage(page + 1);
+      if (d) {
+        // กันรีวิวซ้ำ: ถ้ามีคนเขียนรีวิวใหม่ระหว่างที่เราเลื่อน แถวจะเลื่อนลงไปหนึ่งช่องและซ้ำได้
+        setItems((prev) => {
+          const seen = new Set(prev.map((x) => x.id));
+          return [...prev, ...d.items.filter((x) => !seen.has(x.id))];
+        });
+        setTotal(d.total);
+        setPage(d.page);
+      }
     } catch (err) {
       toast.error(problemMessage(err));
+    } finally {
+      setLoading(false);
     }
-  }
+  }, [fetchPage, page]);
+
+  // โหลดหน้าถัดไปเมื่อเลื่อนใกล้ก้นกล่อง ใช้ IntersectionObserver ไม่ใช่ onScroll
+  // เพราะ scroll event ยิงทุกเฟรมและทำให้เรนเดอร์ใหม่รัว ๆ
+  useEffect(() => {
+    if (!sentinel || !box || done || loading) return;
+    const io = new IntersectionObserver((entries) => entries[0]?.isIntersecting && loadMore(), {
+      root: box,
+      rootMargin: "160px", // เริ่มโหลดก่อนถึงก้นจริง ผู้ใช้จึงไม่ค่อยเห็นรอยสะดุด
+    });
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, [sentinel, box, done, loading, loadMore]);
 
   async function changed() {
     router.refresh(); // คะแนนเฉลี่ยและ my_review มาจาก Server Component
-    await loadPage(1);
+    try {
+      const d = await fetchPage(1);
+      if (d) {
+        setItems(d.items);
+        setTotal(d.total);
+        setPage(1);
+        box?.scrollTo({ top: 0 });
+      }
+    } catch (err) {
+      toast.error(problemMessage(err));
+    }
   }
 
   return (
@@ -95,11 +142,13 @@ export function Reviews({
         <MyReview restaurantId={restaurant.id} mine={restaurant.my_review} onChanged={changed} />
       )}
 
-      {data.items.length === 0 ? (
+      {items.length === 0 ? (
         <p className="text-(--ink-2)">ยังไม่มีรีวิว</p>
       ) : (
+        // กล่องสูงประมาณ 5 แถว เลื่อนในกล่องแล้วโหลดเพิ่มเองจนครบ หน้าร้านจึงไม่ยาวตามจำนวนรีวิว
+        <div ref={setBox} className="-mr-2 max-h-[480px] overflow-y-auto pr-2">
         <ul className="flex flex-col gap-3">
-          {data.items.map((r) => (
+          {items.map((r) => (
             <li key={r.id} className="row-plain flex gap-3.5 rounded-[22px] p-4.5">
               <span
                 aria-hidden="true"
@@ -122,21 +171,13 @@ export function Reviews({
               </div>
             </li>
           ))}
+          {/* จุดสังเกตก้นรายการ เลื่อนมาถึงเมื่อไรคือสัญญาณให้โหลดหน้าถัดไป */}
+          <li ref={setSentinel} aria-hidden="true" className="h-px" />
         </ul>
-      )}
-
-      {totalPages > 1 && (
-        <nav aria-label="หน้ารีวิว" className="flex items-center justify-center gap-3">
-          <Button variant="glass" size="sm" disabled={data.page <= 1} onClick={() => loadPage(data.page - 1)}>
-            ก่อนหน้า
-          </Button>
-          <span className="text-sm text-(--ink-2)">
-            หน้า {data.page} จาก {totalPages}
-          </span>
-          <Button variant="glass" size="sm" disabled={data.page >= totalPages} onClick={() => loadPage(data.page + 1)}>
-            ถัดไป
-          </Button>
-        </nav>
+        <p role="status" className="py-3 text-center text-sm text-(--ink-2)">
+          {loading ? "กำลังโหลดรีวิวเพิ่ม…" : done ? `แสดงครบ ${total.toLocaleString("th-TH")} รีวิวแล้ว` : "เลื่อนลงเพื่อดูเพิ่ม"}
+        </p>
+        </div>
       )}
     </section>
   );

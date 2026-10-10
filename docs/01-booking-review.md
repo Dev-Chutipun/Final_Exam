@@ -259,6 +259,7 @@ Body: ส่งครบ `capacity`, `open_time` (`"HH:MM"`), `close_time`, `can
 
 **รายการรีวิวของร้าน — `GET /api/restaurants/{id}/reviews?page=1&page_size=10`** (สาธารณะ)
 - เรียง `created_at DESC, id DESC` ตอบ `{ items, page, page_size, total }` (`page_size` สูงสุด 50)
+- หน้าเว็บแสดงเป็นกล่องเลื่อนสูงประมาณ 5 แถว โหลดหน้าถัดไปเองเมื่อเลื่อนใกล้ก้นกล่องจนครบ (ไม่มีปุ่มแบ่งหน้า) ดู `05-frontend.md` §4
 - แต่ละรายการ: `id`, `rating` (คะแนนรวม ทศนิยม 2 ตำแหน่ง), `aspects` (`{ food, ambience, service, value }`), `comment`, `display_name`, `created_at`, `edited` (= `updated_at > created_at`), `is_mine` (`false` เมื่อไม่ได้ login)
 - รีวิวของผู้ใช้ปัจจุบันสำหรับร้านนี้ส่งในรายละเอียดร้านเป็นฟิลด์ `my_review` (ดู `03-restaurants.md`) เพราะรายการแบ่งหน้าอาจไม่มีรีวิวนั้นในหน้าแรก
 - แก้ไขหรือลบรีวิวของร้านที่ถูกลบ → 404
