@@ -19,7 +19,10 @@ export async function SiteHeader() {
   }
 
   return (
-    <div className="px-4 pt-4 sm:px-6">
+    // ตรึงแถบเมนูไว้ด้านบน โลโก้ (กลับหน้าแรก) และเมนูจึงเข้าถึงได้ตลอดแม้หน้ายาว เช่นหน้าร้านที่ยาวหลายพันพิกเซล
+    // z-40 อยู่ใต้ z-50 ของ dialog เสมอ หน้าต่างยืนยันจึงยังคลุมแถบนี้ได้
+    // ไล่สีจากพื้นหลังหน้าเว็บไปโปร่งใส เนื้อหาที่เลื่อนลอดใต้แถบจึงค่อย ๆ จางแทนที่จะโผล่ขึ้นมาในช่องว่างด้านบน
+    <div className="sticky top-0 z-40 bg-linear-to-b from-(--bg) via-(--bg)/92 to-transparent px-4 pt-4 pb-3 sm:px-6">
       <header className="glass mx-auto flex min-h-[68px] max-w-(--w-wide) flex-wrap items-center gap-x-6 gap-y-2 rounded-[22px] px-3 py-2 sm:pl-[18px]">
         <Link href="/" className="font-heading flex items-center gap-2.5 text-[21px] font-bold">
           <span

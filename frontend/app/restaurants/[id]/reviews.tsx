@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
 
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { StarIcon } from "@/components/icons";
 import { LoginLink } from "@/components/login-link";
 import { Pill } from "@/components/pill";
@@ -156,6 +157,7 @@ function MyReview({
   onChanged: () => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const showSuccess = useSuccessDialog();
 
@@ -165,6 +167,7 @@ function MyReview({
     try {
       await apiSend("DELETE", `/api/reviews/${mine.id}`);
       showSuccess({ title: "ลบรีวิวแล้ว" });
+      setConfirmOpen(false);
       setEditing(false);
       await onChanged();
     } catch (err) {
@@ -185,9 +188,26 @@ function MyReview({
           </Pill>
         </span>
         <div className="flex gap-2">
-          <Button variant="danger" onClick={remove} disabled={busy}>
-            ลบรีวิว
-          </Button>
+          {/* ลบรีวิวย้อนกลับไม่ได้ และปุ่มอยู่ในแถบที่เห็นตลอด จึงต้องถามยืนยันก่อน */}
+          <ConfirmDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            trigger={<Button variant="danger">ลบรีวิว</Button>}
+            title="ลบรีวิวนี้?"
+            confirmLabel="ยืนยันลบ"
+            cancelLabel="ไม่ลบ"
+            busy={busy}
+            onConfirm={remove}
+          >
+            <div className="rounded-[20px] border border-white/95 bg-white/85 px-4 py-3.5">
+              <div className="font-heading flex items-center gap-2 font-semibold text-(--ink)">
+                <StarIcon size={14} />
+                {mine.rating.toFixed(1)}/5
+              </div>
+              <p className="break-words whitespace-pre-line text-(--ink-body)">{mine.comment}</p>
+            </div>
+            <p>ลบแล้วกู้คืนไม่ได้ คะแนนเฉลี่ยของร้านจะคำนวณใหม่ทันที · เขียนรีวิวใหม่ได้ภายหลัง</p>
+          </ConfirmDialog>
           <Button variant="glass" onClick={() => setEditing(true)} disabled={busy}>
             แก้รีวิว
           </Button>

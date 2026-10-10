@@ -186,13 +186,9 @@ async function Nearby({ restaurant, loggedIn }: { restaurant: RestaurantDetail; 
   const others = data.items.filter((x) => x.id !== restaurant.id).slice(0, 3);
   if (others.length === 0) return null;
 
-  const names = restaurant.categories.map((c) => c.name_th).join(" · ");
   return (
-    <section aria-label="ร้านใกล้เคียง" className="mt-7 flex flex-col gap-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-[22px] font-semibold">ร้านอื่นในหมวดเดียวกัน</h2>
-        <span className="text-sm text-(--ink-2)">{names}</span>
-      </div>
+    <section aria-label="ร้านอื่นที่น่าสนใจ" className="mt-7 flex flex-col gap-4">
+      <h2 className="text-[22px] font-semibold">ร้านอื่นที่น่าสนใจ</h2>
       <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
         {others.map((x) => (
           <RestaurantCard key={x.id} r={x} loggedIn={loggedIn} />
