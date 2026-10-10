@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -65,6 +66,9 @@ func TestSeedData(t *testing.T) {
 		if !owners[r.owner] {
 			t.Errorf("%s: เจ้าของ %s ไม่ใช่บัญชีที่ login ได้", r.key, r.owner)
 		}
+		if strings.Contains(r.description(), "ที่ตั้ง:") {
+			t.Errorf("%s: ที่อยู่ต้องอยู่ในคอลัมน์ address ไม่ใช่ในรายละเอียด", r.key)
+		}
 		if n := len([]rune(r.description())); n > 2000 {
 			t.Errorf("%s: รายละเอียดยาว %d เกิน 2,000", r.key, n)
 		}
@@ -73,6 +77,9 @@ func TestSeedData(t *testing.T) {
 		}
 		if n := len(r.categories); n < 1 || n > 3 {
 			t.Errorf("%s: ต้องมี 1–3 หมวด มี %d", r.key, n)
+		}
+		if n := len([]rune(r.place)); n < 1 || n > 200 {
+			t.Errorf("%s: ที่อยู่ต้องยาว 1–200 ตัวอักษร มี %d", r.key, n)
 		}
 		if r.lat < 13.4 || r.lat > 14.0 || r.lng < 100.3 || r.lng > 100.9 {
 			t.Errorf("%s: พิกัดไม่ได้อยู่แถวกรุงเทพฯ (%v, %v)", r.key, r.lat, r.lng)

@@ -161,7 +161,8 @@ var restaurants = []restaurant{
 		18, "09:00", "19:00", 30, 120, true, []int{11}, 13.7791, 100.5443},
 }
 
-// description รวมคำอธิบาย รายการเมนู และที่ตั้งเป็นข้อความเดียว (หน้าร้านแสดงแบบรักษาการขึ้นบรรทัด)
+// description รวมคำอธิบายกับรายการเมนูเป็นข้อความเดียว (หน้าร้านแสดงแบบรักษาการขึ้นบรรทัด)
+// ที่อยู่ไม่อยู่ในนี้แล้ว ไปอยู่ในคอลัมน์ address เพื่อให้แสดงคู่กับแผนที่ได้
 func (r restaurant) description() string {
 	var b strings.Builder
 	b.WriteString(r.about)
@@ -169,7 +170,6 @@ func (r restaurant) description() string {
 	for _, m := range r.menu {
 		b.WriteString("\n• " + m)
 	}
-	b.WriteString("\n\nที่ตั้ง: " + r.place)
 	return b.String()
 }
 
@@ -291,10 +291,10 @@ func (s *seeder) restaurant(i int, r restaurant) error {
 	var id int64
 	err := s.tx.QueryRow(s.ctx, `
 		INSERT INTO restaurants (owner_id, name, description, capacity, open_time, close_time,
-		                         cancel_window_minutes, min_lead_minutes, accepting_bookings, latitude, longitude)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+		                         cancel_window_minutes, min_lead_minutes, accepting_bookings, address, latitude, longitude)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
 		s.users[r.owner], r.name, r.description(), r.capacity, r.open, r.close,
-		r.cancelWindow, r.minLead, r.accepting, r.lat, r.lng).Scan(&id)
+		r.cancelWindow, r.minLead, r.accepting, r.place, r.lat, r.lng).Scan(&id)
 	if err != nil {
 		return fmt.Errorf("%s: %w", r.name, err)
 	}

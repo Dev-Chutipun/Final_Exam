@@ -140,6 +140,7 @@ type createData struct {
 	CancelWindowMinutes *int     `json:"cancel_window_minutes"`
 	MinLeadMinutes      *int     `json:"min_lead_minutes"`
 	CategoryIDs         []int    `json:"category_ids"`
+	Address             *string  `json:"address"`
 	Latitude            *float64 `json:"latitude"`
 	Longitude           *float64 `json:"longitude"`
 }
@@ -164,7 +165,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	errs, info := validateInfo(nil, data.Name, data.Description, data.CategoryIDs, data.Latitude, data.Longitude)
+	errs, info := validateInfo(nil, data.Name, data.Description, data.CategoryIDs, data.Address, data.Latitude, data.Longitude)
 	errs, open, close := validateCapacityAndHours(errs, data.Capacity, data.OpenTime, data.CloseTime)
 	files := r.MultipartForm.File["images"]
 	if len(files) < 1 || len(files) > MaxImages {
@@ -247,6 +248,7 @@ type infoBody struct {
 	Name        *string  `json:"name"`
 	Description *string  `json:"description"`
 	CategoryIDs []int    `json:"category_ids"`
+	Address     *string  `json:"address"`
 	Latitude    *float64 `json:"latitude"`
 	Longitude   *float64 `json:"longitude"`
 }
@@ -266,7 +268,7 @@ func (h *Handler) updateInfo(w http.ResponseWriter, r *http.Request) {
 	if !httpx.ReadJSON(w, r, &body) {
 		return
 	}
-	errs, info := validateInfo(nil, body.Name, body.Description, body.CategoryIDs, body.Latitude, body.Longitude)
+	errs, info := validateInfo(nil, body.Name, body.Description, body.CategoryIDs, body.Address, body.Latitude, body.Longitude)
 	if len(errs) > 0 {
 		httpx.Write(w, httpx.Validation("ข้อมูลร้านไม่ถูกต้อง", errs...))
 		return

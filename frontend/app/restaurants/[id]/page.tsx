@@ -115,24 +115,32 @@ export default async function RestaurantPage({ params }: Params) {
               </Policy>
             </div>
 
-            {/* ที่ตั้งร้าน แสดงเมื่อเจ้าของระบุพิกัดไว้ · ใช้ OpenStreetMap จึงไม่ต้องมี API key */}
-            {r.latitude !== null && r.longitude !== null && (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h3 className="font-heading text-[17px] font-semibold">ที่ตั้งร้าน</h3>
-                  <Button asChild variant="glass" size="sm">
-                    <a href={googleMapsUrl({ lat: r.latitude, lng: r.longitude })} target="_blank" rel="noreferrer noopener">
-                      เปิดใน Google Maps
-                    </a>
-                  </Button>
+            {/* ที่ตั้งร้าน: ที่อยู่กับแผนที่อยู่กล่องเดียวกัน เพราะเป็นข้อมูลเรื่องเดียวกัน
+                แผนที่ใช้ OpenStreetMap จึงไม่ต้องมี API key · ที่อยู่และพิกัดมีอย่างใดอย่างหนึ่งก็แสดงได้ */}
+            {(r.address !== null || (r.latitude !== null && r.longitude !== null)) && (
+              <div className="flex flex-col gap-3 rounded-[22px] border border-white/95 bg-white/55 p-4.5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <h3 className="font-heading text-[17px] font-semibold">ที่ตั้งร้าน</h3>
+                    {r.address !== null && <p className="break-words text-(--ink-body)">{r.address}</p>}
+                  </div>
+                  {r.latitude !== null && r.longitude !== null && (
+                    <Button asChild variant="glass" size="sm">
+                      <a href={googleMapsUrl({ lat: r.latitude, lng: r.longitude })} target="_blank" rel="noreferrer noopener">
+                        เปิดใน Google Maps
+                      </a>
+                    </Button>
+                  )}
                 </div>
-                <iframe
-                  title={`แผนที่ที่ตั้งของ ${r.name}`}
-                  src={osmEmbedUrl({ lat: r.latitude, lng: r.longitude })}
-                  loading="lazy"
-                  referrerPolicy="no-referrer-when-downgrade"
-                  className="h-[300px] w-full rounded-[22px] border border-white/95"
-                />
+                {r.latitude !== null && r.longitude !== null && (
+                  <iframe
+                    title={`แผนที่ที่ตั้งของ ${r.name}`}
+                    src={osmEmbedUrl({ lat: r.latitude, lng: r.longitude })}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    className="h-[300px] w-full rounded-[18px] border border-white/95"
+                  />
+                )}
               </div>
             )}
           </section>

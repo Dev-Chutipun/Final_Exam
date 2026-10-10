@@ -31,6 +31,7 @@ export function RestaurantForm(props: Props) {
   const [name, setName] = useState(editing?.name ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
   // ช่องเดียวรับได้ทั้งลิงก์แผนที่และพิกัด แล้วแกะเป็นตัวเลขตอนส่ง
+  const [address, setAddress] = useState(editing?.address ?? "");
   const [mapInput, setMapInput] = useState(
     editing?.latitude != null && editing.longitude != null ? `${editing.latitude}, ${editing.longitude}` : "",
   );
@@ -85,7 +86,14 @@ export function RestaurantForm(props: Props) {
     setFormError(null);
     try {
       if (editing) {
-        await apiSend("PATCH", `/api/restaurants/${editing.id}`, { name, description, category_ids: categoryIds, latitude: place?.lat ?? null, longitude: place?.lng ?? null });
+        await apiSend("PATCH", `/api/restaurants/${editing.id}`, {
+          name,
+          description,
+          category_ids: categoryIds,
+          address: address.trim() === "" ? null : address.trim(),
+          latitude: place?.lat ?? null,
+          longitude: place?.lng ?? null,
+        });
         showSuccess({ title: "บันทึกข้อมูลร้านแล้ว", detail: name });
         router.push(`/my/restaurants/${editing.id}`);
         router.refresh();
@@ -104,6 +112,7 @@ export function RestaurantForm(props: Props) {
           cancel_window_minutes: Number(cancelWindow),
           min_lead_minutes: Number(minLead),
           category_ids: categoryIds,
+          address: address.trim() === "" ? null : address.trim(),
           latitude: place?.lat ?? null,
           longitude: place?.lng ?? null,
         }),
@@ -156,9 +165,22 @@ export function RestaurantForm(props: Props) {
           {err("description")}
         </label>
 
-        {/* ที่ตั้ง (ไม่บังคับ) วางลิงก์แผนที่แล้วแกะพิกัดให้ฝั่งเบราว์เซอร์ · เซิร์ฟเวอร์รับแค่ตัวเลข */}
+        {/* ที่ตั้ง (ไม่บังคับ) ที่อยู่กับหมุดอยู่ด้วยกัน เพราะหน้าร้านแสดงคู่กันเป็นกล่องเดียว */}
         <label className="flex flex-col gap-1.5 text-sm font-semibold">
-          ที่ตั้งบนแผนที่ <span className="font-normal text-(--ink-3)">(ไม่บังคับ)</span>
+          ที่อยู่ <span className="font-normal text-(--ink-3)">(ไม่บังคับ)</span>
+          <input
+            className="field"
+            value={address}
+            maxLength={200}
+            placeholder="เช่น ซอยริมคลอง 12 เขตดุสิต กรุงเทพฯ"
+            aria-invalid={!!errors.address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
+          {err("address")}
+        </label>
+
+        <label className="flex flex-col gap-1.5 text-sm font-semibold">
+          ปักหมุดบนแผนที่ <span className="font-normal text-(--ink-3)">(ไม่บังคับ)</span>
           <input
             className="field"
             value={mapInput}

@@ -572,11 +572,17 @@ func TestRestaurantLocationL1toL4(t *testing.T) {
 	if status != 201 || body["latitude"] != nil || body["longitude"] != nil {
 		t.Fatalf("L1: %d lat=%v lng=%v", status, body["latitude"], body["longitude"])
 	}
+	if body["address"] != nil {
+		t.Errorf("L1: ไม่ส่ง address ต้องได้ null ได้ %v", body["address"])
+	}
 
 	// L2 ระบุพิกัด → คืนค่าเดิมกลับมา
-	status, body = create("ร้านมีพิกัด", map[string]any{"latitude": 13.7466, "longitude": 100.5347})
+	status, body = create("ร้านมีพิกัด", map[string]any{"latitude": 13.7466, "longitude": 100.5347, "address": "  ซอยริมคลอง 12  "})
 	if status != 201 || body["latitude"] != 13.7466 || body["longitude"] != 100.5347 {
 		t.Fatalf("L2: %d %v", status, body)
+	}
+	if body["address"] != "ซอยริมคลอง 12" {
+		t.Errorf("L2: address ต้องถูกตัดช่องว่างหัวท้าย ได้ %q", body["address"])
 	}
 	id := int64(body["id"].(float64))
 
@@ -611,5 +617,35 @@ func TestRestaurantLocationL1toL4(t *testing.T) {
 	_, _, d = e.do("GET", "/api/restaurants/"+itoa(id), owner, "")
 	if d["latitude"] != nil || d["longitude"] != nil {
 		t.Errorf("L4 cleared = %v %v", d["latitude"], d["longitude"])
+	}
+}
+
+// L5 ที่อยู่: ยาวเกิน 200 → 400 · ช่องว่างล้วน = ไม่ระบุ · ระบุที่อยู่อย่างเดียวโดยไม่ปักหมุดได้
+func TestRestaurantAddressL5(t *testing.T) {
+	e := newEnv(t)
+	owner := e.user("owner")
+	data := func(name string, address any) string {
+		b, _ := json.Marshal(map[string]any{
+			"name": name, "description": "ร้านทดสอบที่อยู่", "capacity": 20,
+			"open_time": "10:00", "close_time": "22:00", "category_ids": []int{1}, "address": address,
+		})
+		return string(b)
+	}
+
+	long := strings.Repeat("ก", 201)
+	if status, _, body, _ := e.send(multipartReq("POST", "/api/restaurants", owner, data("ร้านยาว", long), img("a.png"))); status != 400 {
+		t.Errorf("ที่อยู่ 201 ตัวอักษรต้องได้ 400 ได้ %d %v", status, body)
+	}
+
+	// ช่องว่างล้วนถือว่าไม่ระบุ ไม่ใช่ error และไม่เก็บสตริงว่างลงฐาน (CHECK ห้ามไว้)
+	status, _, body, _ := e.send(multipartReq("POST", "/api/restaurants", owner, data("ร้านช่องว่าง", "   "), img("a.png")))
+	if status != 201 || body["address"] != nil {
+		t.Errorf("ช่องว่างล้วนต้องได้ null: %d %v", status, body["address"])
+	}
+
+	// ที่อยู่กับพิกัดเป็นอิสระต่อกัน ระบุอย่างใดอย่างหนึ่งได้
+	status, _, body, _ = e.send(multipartReq("POST", "/api/restaurants", owner, data("ร้านมีแต่ที่อยู่", "ถนนเยาวราช"), img("a.png")))
+	if status != 201 || body["address"] != "ถนนเยาวราช" || body["latitude"] != nil {
+		t.Errorf("ที่อยู่อย่างเดียว: %d %v", status, body)
 	}
 }

@@ -26,7 +26,8 @@ type Info struct {
 	Name        string
 	Description string
 	CategoryIDs []int
-	Location    *Location // nil = ร้านไม่ระบุที่ตั้ง
+	Address     *string   // nil = ไม่ระบุที่อยู่
+	Location    *Location // nil = ไม่ได้ปักหมุดบนแผนที่
 }
 
 // Location คือพิกัดที่ตั้งร้าน ใช้แสดงแผนที่เท่านั้น ไม่มีผลกับกติกาการจอง
@@ -70,6 +71,7 @@ type Detail struct {
 	CancelWindowMinutes int        `json:"cancel_window_minutes"`
 	MinLeadMinutes      int        `json:"min_lead_minutes"`
 	AcceptingBookings   bool       `json:"accepting_bookings"`
+	Address             *string    `json:"address"`  // null เมื่อไม่ระบุที่อยู่
 	Latitude            *float64   `json:"latitude"` // null คู่กับ longitude เมื่อไม่ระบุที่ตั้ง
 	Longitude           *float64   `json:"longitude"`
 	AvgRating           *float64   `json:"avg_rating"`
@@ -119,9 +121,25 @@ func validateLocation(errs []httpx.FieldError, lat, lng *float64) ([]httpx.Field
 	return errs, &Location{Latitude: *lat, Longitude: *lng}
 }
 
-// validateInfo ตรวจชื่อ รายละเอียด หมวด และที่ตั้ง (03 §3) หลัง TrimSpace นับความยาวเป็น rune
-func validateInfo(errs []httpx.FieldError, name, description *string, categoryIDs []int, lat, lng *float64) ([]httpx.FieldError, Info) {
+// validateAddress ตรวจที่อยู่ ไม่ส่งมาหรือส่งมาเป็นช่องว่างล้วน = ไม่ระบุ (03 §3)
+func validateAddress(errs []httpx.FieldError, address *string) ([]httpx.FieldError, *string) {
+	if address == nil {
+		return errs, nil
+	}
+	v := strings.TrimSpace(*address)
+	if v == "" {
+		return errs, nil
+	}
+	if utf8.RuneCountInString(v) > 200 {
+		return append(errs, httpx.FieldError{Field: "address", Message: "ต้องยาวไม่เกิน 200 ตัวอักษร"}), nil
+	}
+	return errs, &v
+}
+
+// validateInfo ตรวจชื่อ รายละเอียด หมวด ที่อยู่ และพิกัด (03 §3) หลัง TrimSpace นับความยาวเป็น rune
+func validateInfo(errs []httpx.FieldError, name, description *string, categoryIDs []int, address *string, lat, lng *float64) ([]httpx.FieldError, Info) {
 	var in Info
+	errs, in.Address = validateAddress(errs, address)
 	errs, in.Location = validateLocation(errs, lat, lng)
 	if name != nil {
 		in.Name = strings.TrimSpace(*name)
@@ -202,11 +220,11 @@ func (s *Service) Create(ctx context.Context, ownerID int64, in NewRestaurant, n
 		}
 		err := tx.QueryRow(ctx, `
 			INSERT INTO restaurants (owner_id, name, description, capacity, open_time, close_time,
-			                         cancel_window_minutes, min_lead_minutes, latitude, longitude, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+			                         cancel_window_minutes, min_lead_minutes, address, latitude, longitude, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
 			RETURNING id`,
 			ownerID, in.Name, in.Description, in.Capacity, FormatClock(in.Open), FormatClock(in.Close),
-			in.CancelWindowMinutes, in.MinLeadMinutes, lat(in.Location), lng(in.Location), now).Scan(&id)
+			in.CancelWindowMinutes, in.MinLeadMinutes, in.Address, lat(in.Location), lng(in.Location), now).Scan(&id)
 		if err != nil {
 			return nameTaken(err)
 		}
@@ -232,14 +250,14 @@ func (s *Service) Detail(ctx context.Context, restaurantID, viewer int64) (Detai
 		SELECT r.id, r.name, r.description, r.capacity,
 		       to_char(r.open_time, 'HH24:MI'), to_char(r.close_time, 'HH24:MI'),
 		       r.cancel_window_minutes, r.min_lead_minutes, r.accepting_bookings, r.owner_id = $2,
-		       r.latitude, r.longitude,
+		       r.address, r.latitude, r.longitude,
 		       (SELECT ROUND(AVG(rating), 1)::float8 FROM reviews WHERE restaurant_id = r.id),
 		       (SELECT count(*) FROM reviews WHERE restaurant_id = r.id)
 		  FROM restaurants r
 		 WHERE r.id = $1 AND r.deleted_at IS NULL`, restaurantID, viewer).
 		Scan(&d.ID, &d.Name, &d.Description, &d.Capacity, &d.OpenTime, &d.CloseTime,
 			&d.CancelWindowMinutes, &d.MinLeadMinutes, &d.AcceptingBookings, &d.IsOwner,
-			&d.Latitude, &d.Longitude,
+			&d.Address, &d.Latitude, &d.Longitude,
 			&d.AvgRating, &d.ReviewCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, httpx.New("not-found", "ไม่พบร้านนี้")
@@ -314,9 +332,9 @@ func (s *Service) UpdateInfo(ctx context.Context, userID, restaurantID int64, in
 			return err
 		}
 		_, err := tx.Exec(ctx, `
-			UPDATE restaurants SET name = $2, description = $3, latitude = $4, longitude = $5, updated_at = $6
+			UPDATE restaurants SET name = $2, description = $3, address = $4, latitude = $5, longitude = $6, updated_at = $7
 			 WHERE id = $1`,
-			restaurantID, in.Name, in.Description, lat(in.Location), lng(in.Location), now)
+			restaurantID, in.Name, in.Description, in.Address, lat(in.Location), lng(in.Location), now)
 		if err != nil {
 			return nameTaken(err)
 		}

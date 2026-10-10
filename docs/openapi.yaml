@@ -867,6 +867,7 @@ components:
         close_time: { $ref: '#/components/schemas/Clock' }
         cancel_window_minutes: { type: integer }
         min_lead_minutes: { type: integer }
+        address: { type: [string, 'null'], maxLength: 200 }
         latitude: { type: [number, 'null'], description: null คู่กับ longitude เมื่อร้านไม่ระบุที่ตั้ง }
         longitude: { type: [number, 'null'] }
         accepting_bookings: { type: boolean }
@@ -895,6 +896,7 @@ components:
           maxItems: 3
           uniqueItems: true
           items: { type: integer }
+        address: { type: [string, 'null'], maxLength: 200, description: ไม่บังคับ · ช่องว่างล้วนหรือ null = ไม่ระบุ }
         latitude: { type: [number, 'null'], minimum: -90, maximum: 90, description: ไม่บังคับ แต่ต้องส่งคู่กับ longitude เสมอ · null ทั้งคู่ = ล้างที่ตั้ง }
         longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
 
