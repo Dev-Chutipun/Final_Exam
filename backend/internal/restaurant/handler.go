@@ -132,14 +132,16 @@ func (h *Handler) categories(w http.ResponseWriter, r *http.Request) {
 // createData คือฟิลด์ data (JSON) ของ multipart ตอนสร้างร้าน
 // ไม่มี owner_id: ส่งมาจะเป็นฟิลด์ที่ไม่รู้จัก → 400
 type createData struct {
-	Name                *string `json:"name"`
-	Description         *string `json:"description"`
-	Capacity            *int    `json:"capacity"`
-	OpenTime            *string `json:"open_time"`
-	CloseTime           *string `json:"close_time"`
-	CancelWindowMinutes *int    `json:"cancel_window_minutes"`
-	MinLeadMinutes      *int    `json:"min_lead_minutes"`
-	CategoryIDs         []int   `json:"category_ids"`
+	Name                *string  `json:"name"`
+	Description         *string  `json:"description"`
+	Capacity            *int     `json:"capacity"`
+	OpenTime            *string  `json:"open_time"`
+	CloseTime           *string  `json:"close_time"`
+	CancelWindowMinutes *int     `json:"cancel_window_minutes"`
+	MinLeadMinutes      *int     `json:"min_lead_minutes"`
+	CategoryIDs         []int    `json:"category_ids"`
+	Latitude            *float64 `json:"latitude"`
+	Longitude           *float64 `json:"longitude"`
 }
 
 // POST /api/restaurants (03 §4.1) multipart: data (JSON) + images 1–3 ไฟล์
@@ -162,7 +164,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, r, err)
 		return
 	}
-	errs, info := validateInfo(nil, data.Name, data.Description, data.CategoryIDs)
+	errs, info := validateInfo(nil, data.Name, data.Description, data.CategoryIDs, data.Latitude, data.Longitude)
 	errs, open, close := validateCapacityAndHours(errs, data.Capacity, data.OpenTime, data.CloseTime)
 	files := r.MultipartForm.File["images"]
 	if len(files) < 1 || len(files) > MaxImages {
@@ -242,9 +244,11 @@ func (h *Handler) mine(w http.ResponseWriter, r *http.Request) {
 }
 
 type infoBody struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	CategoryIDs []int   `json:"category_ids"`
+	Name        *string  `json:"name"`
+	Description *string  `json:"description"`
+	CategoryIDs []int    `json:"category_ids"`
+	Latitude    *float64 `json:"latitude"`
+	Longitude   *float64 `json:"longitude"`
 }
 
 // PATCH /api/restaurants/{id} (03 §4.2) ส่งครบ name, description, category_ids
@@ -262,7 +266,7 @@ func (h *Handler) updateInfo(w http.ResponseWriter, r *http.Request) {
 	if !httpx.ReadJSON(w, r, &body) {
 		return
 	}
-	errs, info := validateInfo(nil, body.Name, body.Description, body.CategoryIDs)
+	errs, info := validateInfo(nil, body.Name, body.Description, body.CategoryIDs, body.Latitude, body.Longitude)
 	if len(errs) > 0 {
 		httpx.Write(w, httpx.Validation("ข้อมูลร้านไม่ถูกต้อง", errs...))
 		return

@@ -21,11 +21,33 @@ type Category struct {
 	NameTH string `json:"name_th"`
 }
 
-// Info คือชื่อ รายละเอียด และหมวด (ส่วนที่แก้ได้โดยไม่กระทบการจอง)
+// Info คือชื่อ รายละเอียด หมวด และที่ตั้ง (ส่วนที่แก้ได้โดยไม่กระทบการจอง)
 type Info struct {
 	Name        string
 	Description string
 	CategoryIDs []int
+	Location    *Location // nil = ร้านไม่ระบุที่ตั้ง
+}
+
+// Location คือพิกัดที่ตั้งร้าน ใช้แสดงแผนที่เท่านั้น ไม่มีผลกับกติกาการจอง
+type Location struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+// lat และ lng แปลงที่ตั้งเป็นค่าที่ส่งเข้า SQL ได้ (nil → NULL ทั้งคู่ ตรงกับ CHECK ในตาราง)
+func lat(l *Location) *float64 {
+	if l == nil {
+		return nil
+	}
+	return &l.Latitude
+}
+
+func lng(l *Location) *float64 {
+	if l == nil {
+		return nil
+	}
+	return &l.Longitude
 }
 
 // NewRestaurant คือข้อมูลสร้างร้านที่ผ่านการตรวจรูปแบบแล้ว
@@ -48,6 +70,8 @@ type Detail struct {
 	CancelWindowMinutes int        `json:"cancel_window_minutes"`
 	MinLeadMinutes      int        `json:"min_lead_minutes"`
 	AcceptingBookings   bool       `json:"accepting_bookings"`
+	Latitude            *float64   `json:"latitude"` // null คู่กับ longitude เมื่อไม่ระบุที่ตั้ง
+	Longitude           *float64   `json:"longitude"`
 	AvgRating           *float64   `json:"avg_rating"`
 	ReviewCount         int        `json:"review_count"`
 	IsOwner             bool       `json:"is_owner"` // ใช้ซ่อนหรือแสดงปุ่มเท่านั้น สิทธิ์จริงตัดสินที่แต่ละ endpoint
@@ -74,9 +98,31 @@ type MyRestaurant struct {
 	UpcomingCount     int      `json:"upcoming_count"`
 }
 
-// validateInfo ตรวจชื่อ รายละเอียด และหมวด (03 §3) หลัง TrimSpace นับความยาวเป็น rune
-func validateInfo(errs []httpx.FieldError, name, description *string, categoryIDs []int) ([]httpx.FieldError, Info) {
+// validateLocation ตรวจพิกัด ต้องส่งมาคู่กันหรือไม่ส่งเลย (03 §3)
+func validateLocation(errs []httpx.FieldError, lat, lng *float64) ([]httpx.FieldError, *Location) {
+	switch {
+	case lat == nil && lng == nil:
+		return errs, nil
+	case lat == nil || lng == nil:
+		return append(errs, httpx.FieldError{Field: "latitude", Message: "ต้องระบุทั้ง latitude และ longitude หรือไม่ระบุทั้งคู่"}), nil
+	}
+	ok := true
+	if *lat < -90 || *lat > 90 {
+		errs, ok = append(errs, httpx.FieldError{Field: "latitude", Message: "ต้องอยู่ระหว่าง -90 ถึง 90"}), false
+	}
+	if *lng < -180 || *lng > 180 {
+		errs, ok = append(errs, httpx.FieldError{Field: "longitude", Message: "ต้องอยู่ระหว่าง -180 ถึง 180"}), false
+	}
+	if !ok {
+		return errs, nil
+	}
+	return errs, &Location{Latitude: *lat, Longitude: *lng}
+}
+
+// validateInfo ตรวจชื่อ รายละเอียด หมวด และที่ตั้ง (03 §3) หลัง TrimSpace นับความยาวเป็น rune
+func validateInfo(errs []httpx.FieldError, name, description *string, categoryIDs []int, lat, lng *float64) ([]httpx.FieldError, Info) {
 	var in Info
+	errs, in.Location = validateLocation(errs, lat, lng)
 	if name != nil {
 		in.Name = strings.TrimSpace(*name)
 	}
@@ -156,11 +202,11 @@ func (s *Service) Create(ctx context.Context, ownerID int64, in NewRestaurant, n
 		}
 		err := tx.QueryRow(ctx, `
 			INSERT INTO restaurants (owner_id, name, description, capacity, open_time, close_time,
-			                         cancel_window_minutes, min_lead_minutes, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+			                         cancel_window_minutes, min_lead_minutes, latitude, longitude, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
 			RETURNING id`,
 			ownerID, in.Name, in.Description, in.Capacity, FormatClock(in.Open), FormatClock(in.Close),
-			in.CancelWindowMinutes, in.MinLeadMinutes, now).Scan(&id)
+			in.CancelWindowMinutes, in.MinLeadMinutes, lat(in.Location), lng(in.Location), now).Scan(&id)
 		if err != nil {
 			return nameTaken(err)
 		}
@@ -186,12 +232,14 @@ func (s *Service) Detail(ctx context.Context, restaurantID, viewer int64) (Detai
 		SELECT r.id, r.name, r.description, r.capacity,
 		       to_char(r.open_time, 'HH24:MI'), to_char(r.close_time, 'HH24:MI'),
 		       r.cancel_window_minutes, r.min_lead_minutes, r.accepting_bookings, r.owner_id = $2,
+		       r.latitude, r.longitude,
 		       (SELECT ROUND(AVG(rating), 1)::float8 FROM reviews WHERE restaurant_id = r.id),
 		       (SELECT count(*) FROM reviews WHERE restaurant_id = r.id)
 		  FROM restaurants r
 		 WHERE r.id = $1 AND r.deleted_at IS NULL`, restaurantID, viewer).
 		Scan(&d.ID, &d.Name, &d.Description, &d.Capacity, &d.OpenTime, &d.CloseTime,
 			&d.CancelWindowMinutes, &d.MinLeadMinutes, &d.AcceptingBookings, &d.IsOwner,
+			&d.Latitude, &d.Longitude,
 			&d.AvgRating, &d.ReviewCount)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, httpx.New("not-found", "ไม่พบร้านนี้")
@@ -266,8 +314,9 @@ func (s *Service) UpdateInfo(ctx context.Context, userID, restaurantID int64, in
 			return err
 		}
 		_, err := tx.Exec(ctx, `
-			UPDATE restaurants SET name = $2, description = $3, updated_at = $4 WHERE id = $1`,
-			restaurantID, in.Name, in.Description, now)
+			UPDATE restaurants SET name = $2, description = $3, latitude = $4, longitude = $5, updated_at = $6
+			 WHERE id = $1`,
+			restaurantID, in.Name, in.Description, lat(in.Location), lng(in.Location), now)
 		if err != nil {
 			return nameTaken(err)
 		}

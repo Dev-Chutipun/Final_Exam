@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"testing"
 	"time"
 
@@ -27,6 +28,11 @@ func TestMigrateIsIdempotent(t *testing.T) {
 		t.Errorf("รอบสองไม่ควรรันไฟล์ใด แต่รัน %v", applied)
 	}
 
+	// นับไฟล์จาก embed.FS ไม่ใส่ตัวเลขตายตัว test จะได้ไม่พังทุกครั้งที่เพิ่ม migration ใหม่
+	want, err := fs.Glob(migrations.FS, "*.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
 	var files, categories int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&files); err != nil {
 		t.Fatal(err)
@@ -34,8 +40,8 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM categories`).Scan(&categories); err != nil {
 		t.Fatal(err)
 	}
-	if files != 2 || categories != 12 {
-		t.Errorf("schema_migrations = %d (want 2), categories = %d (want 12)", files, categories)
+	if files != len(want) || categories != 12 {
+		t.Errorf("schema_migrations = %d (want %d), categories = %d (want 12)", files, len(want), categories)
 	}
 }
 

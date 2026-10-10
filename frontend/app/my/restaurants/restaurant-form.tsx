@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Pill } from "@/components/pill";
 import { useSuccessDialog } from "@/components/success-dialog";
 import { Button } from "@/components/ui/button";
+import { googleMapsUrl, isShortMapLink, osmEmbedUrl, parseLatLng } from "@/lib/location";
 import { apiSend } from "@/lib/api-client";
 import { ApiError, problemMessage } from "@/lib/problem";
 import { formatMinutes, halfHours } from "@/lib/time";
@@ -29,6 +30,10 @@ export function RestaurantForm(props: Props) {
 
   const [name, setName] = useState(editing?.name ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
+  // ช่องเดียวรับได้ทั้งลิงก์แผนที่และพิกัด แล้วแกะเป็นตัวเลขตอนส่ง
+  const [mapInput, setMapInput] = useState(
+    editing?.latitude != null && editing.longitude != null ? `${editing.latitude}, ${editing.longitude}` : "",
+  );
   const [categoryIds, setCategoryIds] = useState<number[]>(editing?.categories.map((c) => c.id) ?? []);
   const [images, setImages] = useState<{ file: File; url: string }[]>([]);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -40,6 +45,8 @@ export function RestaurantForm(props: Props) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const place = parseLatLng(mapInput);
 
   function toggleCategory(id: number) {
     setCategoryIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : ids.length < 3 ? [...ids, id] : ids));
@@ -78,7 +85,7 @@ export function RestaurantForm(props: Props) {
     setFormError(null);
     try {
       if (editing) {
-        await apiSend("PATCH", `/api/restaurants/${editing.id}`, { name, description, category_ids: categoryIds });
+        await apiSend("PATCH", `/api/restaurants/${editing.id}`, { name, description, category_ids: categoryIds, latitude: place?.lat ?? null, longitude: place?.lng ?? null });
         showSuccess({ title: "บันทึกข้อมูลร้านแล้ว", detail: name });
         router.push(`/my/restaurants/${editing.id}`);
         router.refresh();
@@ -97,6 +104,8 @@ export function RestaurantForm(props: Props) {
           cancel_window_minutes: Number(cancelWindow),
           min_lead_minutes: Number(minLead),
           category_ids: categoryIds,
+          latitude: place?.lat ?? null,
+          longitude: place?.lng ?? null,
         }),
       );
       images.forEach((i) => fd.append("images", i.file));
@@ -146,6 +155,48 @@ export function RestaurantForm(props: Props) {
           </span>
           {err("description")}
         </label>
+
+        {/* ที่ตั้ง (ไม่บังคับ) วางลิงก์แผนที่แล้วแกะพิกัดให้ฝั่งเบราว์เซอร์ · เซิร์ฟเวอร์รับแค่ตัวเลข */}
+        <label className="flex flex-col gap-1.5 text-sm font-semibold">
+          ที่ตั้งบนแผนที่ <span className="font-normal text-(--ink-3)">(ไม่บังคับ)</span>
+          <input
+            className="field"
+            value={mapInput}
+            placeholder="วางลิงก์ Google Maps หรือพิมพ์ 13.7466, 100.5347"
+            aria-invalid={!!errors.latitude}
+            aria-describedby="map-help"
+            onChange={(e) => setMapInput(e.target.value)}
+          />
+          <span id="map-help" className="text-[13px] font-normal text-(--ink-3)">
+            {place ? (
+              <>
+                พบพิกัด {place.lat.toFixed(5)}, {place.lng.toFixed(5)} ·{" "}
+                <a href={googleMapsUrl(place)} target="_blank" rel="noreferrer noopener" className="underline">
+                  เปิดตรวจสอบใน Google Maps
+                </a>
+              </>
+            ) : isShortMapLink(mapInput) ? (
+              "ลิงก์ย่อแบบนี้ไม่มีพิกัดอยู่ในตัว เปิดลิงก์ในเบราว์เซอร์ก่อน แล้วคัดลอก URL เต็มจากแถบที่อยู่มาวางแทน"
+            ) : mapInput.trim() !== "" ? (
+              "ยังหาพิกัดในข้อความนี้ไม่เจอ ลองวาง URL เต็มจากแถบที่อยู่ของ Google Maps หรือพิมพ์พิกัดเอง"
+            ) : (
+              "เว้นว่างได้ถ้ายังไม่อยากระบุ ใส่แล้วหน้าร้านจะแสดงแผนที่ให้ลูกค้า"
+            )}
+          </span>
+          {err("latitude")}
+          {err("longitude")}
+        </label>
+
+        {place && (
+          <iframe
+            key={`${place.lat},${place.lng}`}
+            title="ตัวอย่างแผนที่ที่ตั้งร้าน"
+            src={osmEmbedUrl(place)}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            className="h-[220px] w-full rounded-[20px] border border-white/95"
+          />
+        )}
       </Section>
 
       <Section n={2} title="หมวดหมู่" aside={<Pill tone="lav">เลือกแล้ว {categoryIds.length} จาก 3</Pill>}>

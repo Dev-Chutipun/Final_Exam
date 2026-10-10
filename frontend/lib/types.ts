@@ -31,6 +31,8 @@ export type RestaurantDetail = {
   close_time: string;
   cancel_window_minutes: number;
   min_lead_minutes: number;
+  latitude: number | null;
+  longitude: number | null;
   accepting_bookings: boolean;
   avg_rating: number | null;
   review_count: number;

@@ -7,8 +7,10 @@ import { notFound } from "next/navigation";
 import { CoverImage } from "@/components/cover-image";
 import { StarIcon } from "@/components/icons";
 import { Pill } from "@/components/pill";
+import { Button } from "@/components/ui/button";
 import { apiGet, apiGetOrNull, getMe } from "@/lib/api-server";
 import { coverGradient, imageUrl } from "@/lib/cover";
+import { googleMapsUrl, osmEmbedUrl } from "@/lib/location";
 import { formatMinutes, todayInBangkok } from "@/lib/time";
 import type { Page, RestaurantDetail, Review } from "@/lib/types";
 
@@ -112,6 +114,27 @@ export default async function RestaurantPage({ params }: Params) {
                 จองได้ครั้งละ 30 นาทีถึง 3 ชั่วโมง
               </Policy>
             </div>
+
+            {/* ที่ตั้งร้าน แสดงเมื่อเจ้าของระบุพิกัดไว้ · ใช้ OpenStreetMap จึงไม่ต้องมี API key */}
+            {r.latitude !== null && r.longitude !== null && (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="font-heading text-[17px] font-semibold">ที่ตั้งร้าน</h3>
+                  <Button asChild variant="glass" size="sm">
+                    <a href={googleMapsUrl({ lat: r.latitude, lng: r.longitude })} target="_blank" rel="noreferrer noopener">
+                      เปิดใน Google Maps
+                    </a>
+                  </Button>
+                </div>
+                <iframe
+                  title={`แผนที่ที่ตั้งของ ${r.name}`}
+                  src={osmEmbedUrl({ lat: r.latitude, lng: r.longitude })}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  className="h-[300px] w-full rounded-[22px] border border-white/95"
+                />
+              </div>
+            )}
           </section>
           <Reviews restaurant={r} loggedIn={me !== null} initial={reviews} />
         </div>

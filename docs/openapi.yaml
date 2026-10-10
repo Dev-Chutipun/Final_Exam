@@ -867,6 +867,8 @@ components:
         close_time: { $ref: '#/components/schemas/Clock' }
         cancel_window_minutes: { type: integer }
         min_lead_minutes: { type: integer }
+        latitude: { type: [number, 'null'], description: null คู่กับ longitude เมื่อร้านไม่ระบุที่ตั้ง }
+        longitude: { type: [number, 'null'] }
         accepting_bookings: { type: boolean }
         avg_rating: { type: [number, 'null'] }
         review_count: { type: integer }
@@ -893,6 +895,8 @@ components:
           maxItems: 3
           uniqueItems: true
           items: { type: integer }
+        latitude: { type: [number, 'null'], minimum: -90, maximum: 90, description: ไม่บังคับ แต่ต้องส่งคู่กับ longitude เสมอ · null ทั้งคู่ = ล้างที่ตั้ง }
+        longitude: { type: [number, 'null'], minimum: -180, maximum: 180 }
 
     CreateRestaurantData:
       description: ฟิลด์ `data` ของ POST /api/restaurants (ห้ามมี `owner_id`)

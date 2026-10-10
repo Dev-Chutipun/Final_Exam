@@ -545,3 +545,71 @@ func TestConcurrentK5DeleteWhileBooking(t *testing.T) {
 }
 
 func pageOf() httpx.Page { return httpx.Page{Page: 1, Size: 20} }
+
+// L1–L4 ที่ตั้งร้าน: ไม่ระบุได้ · ระบุแล้วคืนค่ากลับ · ต้องมาคู่กัน · นอกช่วง 400 · แก้ไขและล้างได้
+func TestRestaurantLocationL1toL4(t *testing.T) {
+	e := newEnv(t)
+	owner := e.user("owner")
+
+	withLocation := func(name string, extra map[string]any) string {
+		m := map[string]any{
+			"name": name, "description": "ร้านทดสอบที่ตั้ง", "capacity": 20,
+			"open_time": "10:00", "close_time": "22:00", "category_ids": []int{1},
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		b, _ := json.Marshal(m)
+		return string(b)
+	}
+	create := func(name string, extra map[string]any) (int, map[string]any) {
+		status, _, body, _ := e.send(multipartReq("POST", "/api/restaurants", owner, withLocation(name, extra), img("a.png")))
+		return status, body
+	}
+
+	// L1 ไม่ระบุที่ตั้ง → สร้างได้ ได้ null ทั้งคู่ (ร้านเดิมที่ยังไม่มีพิกัดต้องใช้งานได้ต่อ)
+	status, body := create("ร้านไม่มีพิกัด", nil)
+	if status != 201 || body["latitude"] != nil || body["longitude"] != nil {
+		t.Fatalf("L1: %d lat=%v lng=%v", status, body["latitude"], body["longitude"])
+	}
+
+	// L2 ระบุพิกัด → คืนค่าเดิมกลับมา
+	status, body = create("ร้านมีพิกัด", map[string]any{"latitude": 13.7466, "longitude": 100.5347})
+	if status != 201 || body["latitude"] != 13.7466 || body["longitude"] != 100.5347 {
+		t.Fatalf("L2: %d %v", status, body)
+	}
+	id := int64(body["id"].(float64))
+
+	// L3 ส่งมาตัวเดียว หรือค่านอกช่วง → 400
+	for _, c := range []struct {
+		name  string
+		extra map[string]any
+	}{
+		{"เฉพาะ lat", map[string]any{"latitude": 13.74}},
+		{"เฉพาะ lng", map[string]any{"longitude": 100.53}},
+		{"lat เกิน", map[string]any{"latitude": 91.0, "longitude": 100.53}},
+		{"lng เกิน", map[string]any{"latitude": 13.74, "longitude": -181.0}},
+	} {
+		if status, body := create("ร้าน "+c.name, c.extra); status != 400 {
+			t.Errorf("L3 %s: %d %v", c.name, status, body)
+		}
+	}
+
+	// L4 แก้ไขพิกัด แล้วล้างทิ้งด้วยการส่ง null
+	patch := `{"name":"ร้านมีพิกัด","description":"ย้ายที่","category_ids":[1],"latitude":13.7563,"longitude":100.5018}`
+	if status, _, body := e.do("PATCH", "/api/restaurants/"+itoa(id), owner, patch); status != 200 {
+		t.Fatalf("L4 patch: %d %v", status, body)
+	}
+	_, _, d := e.do("GET", "/api/restaurants/"+itoa(id), owner, "")
+	if d["latitude"] != 13.7563 || d["longitude"] != 100.5018 {
+		t.Errorf("L4 moved = %v %v", d["latitude"], d["longitude"])
+	}
+	clear := `{"name":"ร้านมีพิกัด","description":"ไม่ระบุที่ตั้งแล้ว","category_ids":[1]}`
+	if status, _, body := e.do("PATCH", "/api/restaurants/"+itoa(id), owner, clear); status != 200 {
+		t.Fatalf("L4 clear: %d %v", status, body)
+	}
+	_, _, d = e.do("GET", "/api/restaurants/"+itoa(id), owner, "")
+	if d["latitude"] != nil || d["longitude"] != nil {
+		t.Errorf("L4 cleared = %v %v", d["latitude"], d["longitude"])
+	}
+}

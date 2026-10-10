@@ -74,6 +74,9 @@ func TestSeedData(t *testing.T) {
 		if n := len(r.categories); n < 1 || n > 3 {
 			t.Errorf("%s: ต้องมี 1–3 หมวด มี %d", r.key, n)
 		}
+		if r.lat < 13.4 || r.lat > 14.0 || r.lng < 100.3 || r.lng > 100.9 {
+			t.Errorf("%s: พิกัดไม่ได้อยู่แถวกรุงเทพฯ (%v, %v)", r.key, r.lat, r.lng)
+		}
 		if r.minLead < r.cancelWindow || r.cancelWindow < 30 {
 			t.Errorf("%s: นโยบายยกเลิก/จองล่วงหน้าไม่ผ่านกติกา", r.key)
 		}
