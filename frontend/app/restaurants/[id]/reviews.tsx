@@ -371,7 +371,7 @@ function ReviewForm({
       {/* ไม่บังคับ: บางคนมีคนเลี้ยงหรือจำไม่ได้ และบังคับกรอกดาว 4 ด้านไปแล้ว */}
       <div className="flex flex-col gap-1.5 text-sm font-semibold">
         <span>
-          จ่ายไปประมาณเท่าไหร่ต่อคน <span className="font-normal text-(--ink-3)">(ไม่บังคับ)</span>
+          ค่าใช้จ่ายต่อคน <span className="font-normal text-(--ink-3)">(ไม่บังคับ)</span>
         </span>
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="ช่วงราคาต่อคน">
           {PRICE_LEVELS.map((p) => {
