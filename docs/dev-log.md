@@ -304,7 +304,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\test-race.ps1 -Concurrent
 2. ~~ใส่รูปใน `seed-images/`~~ ✅ ครบ 60 รูปจริง (ปก 10 ต.ค. · เมนู 11 ต.ค.)
 3. ~~รัน `-race` หลังรอบปรับปรุง~~ ✅ เสร็จ 11 ต.ค. (§13.5)
 4. **ตอบ Checkpoint C · ทำ Checkpoint D, E · ทวนจุดที่ขาดของ A และ B** ← งานหลักที่เหลือ
-5. ~~บทอัดวิดีโอ~~ ✅ ปรับให้ตรงกับระบบปัจจุบันแล้ว (11 ต.ค.) เก็บไว้ที่ `About/video-script.md` ซึ่งไม่ขึ้น GitHub · branch `claude/busy-turing-kee1p9` บน GitHub ยังมีฉบับเก่าค้างอยู่ ลบทิ้งได้
+5. ~~บทอัดวิดีโอ~~ ✅ ปรับให้ตรงกับระบบปัจจุบันแล้ว (11 ต.ค.) เก็บไว้ที่ `About/video-script.md` ซึ่งไม่ขึ้น GitHub · ลบ branch `claude/busy-turing-kee1p9` ที่มีฉบับเก่าทิ้งแล้ว เหลือ `main` branch เดียว
 6. ~~ตัดสินใจเรื่องโฟลเดอร์ `01/`~~ ✅ ย้ายไป `About/01-architecture-course/` แล้ว (11 ต.ค.) · `About/` อยู่ใน `.gitignore`
 7. `go run ./cmd/seed -reset` ก่อนอัดวิดีโอ และส่งงาน
 
