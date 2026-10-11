@@ -304,8 +304,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\test-race.ps1 -Concurrent
 2. ~~ใส่รูปปกใน `seed-images/`~~ ✅ เสร็จ 10 ต.ค. (รูปเมนูยังว่าง โฟลเดอร์ `menu/` รออยู่)
 3. ~~รัน `-race` หลังรอบปรับปรุง~~ ✅ เสร็จ 11 ต.ค. (§13.5)
 4. **ตอบ Checkpoint C · ทำ Checkpoint D, E · ทวนจุดที่ขาดของ A และ B** ← งานหลักที่เหลือ
-5. `docs/video-script.md` อยู่ใน branch `claude/busy-turing-kee1p9` ยังไม่ merge และฉากที่ 4 อิงตารางจองแบบเก่าที่เปลี่ยนไปแล้ว (ตอนนี้กดช่องแรกได้ 30 นาที กดช่องถัดไปขยาย)
-6. ตัดสินใจเรื่องโฟลเดอร์ `01/` (`.gitignore` หรือย้ายออก)
+5. ~~บทอัดวิดีโอ~~ ✅ ปรับให้ตรงกับระบบปัจจุบันแล้ว (11 ต.ค.) เก็บไว้ที่ `About/video-script.md` ซึ่งไม่ขึ้น GitHub · branch `claude/busy-turing-kee1p9` บน GitHub ยังมีฉบับเก่าค้างอยู่ ลบทิ้งได้
+6. ~~ตัดสินใจเรื่องโฟลเดอร์ `01/`~~ ✅ ย้ายไป `About/01-architecture-course/` แล้ว (11 ต.ค.) · `About/` อยู่ใน `.gitignore`
 7. `go run ./cmd/seed -reset` ก่อนอัดวิดีโอ และส่งงาน
 
 ---

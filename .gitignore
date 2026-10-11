@@ -5,3 +5,4 @@ bin/
 frontend/.env.local
 seed-images/_original/
 *.tsbuildinfo
+About/
