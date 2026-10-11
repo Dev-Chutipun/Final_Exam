@@ -49,8 +49,10 @@ type Review struct {
 	ID int64 `json:"id"`
 	// คะแนนรวมเป็นค่าเฉลี่ยของ 4 ด้าน ฐานข้อมูลคำนวณให้เองด้วย generated column
 	// จึงไม่มีทางที่คะแนนรวมกับรายด้านจะไม่ตรงกัน
-	Rating      float64   `json:"rating"`
-	Aspects     Aspects   `json:"aspects"`
+	Rating  float64 `json:"rating"`
+	Aspects Aspects `json:"aspects"`
+	// ช่วงราคาต่อคน 1–5 · nil = ผู้รีวิวไม่ได้ระบุ
+	PriceLevel  *int      `json:"price_level"`
 	Comment     string    `json:"comment"`
 	DisplayName string    `json:"display_name"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -60,8 +62,9 @@ type Review struct {
 
 // Input คือ body ของการสร้างหรือแก้รีวิว
 type Input struct {
-	Aspects Aspects `json:"aspects"`
-	Comment string  `json:"comment"`
+	Aspects    Aspects `json:"aspects"`
+	PriceLevel *int    `json:"price_level"`
+	Comment    string  `json:"comment"`
 }
 
 // validate ตรวจรูปแบบ (400) และคืน comment ที่ตัดช่องว่างหัวท้ายแล้ว
@@ -71,6 +74,9 @@ func (in Input) validate() (Input, error) {
 		if *f.val < 1 || *f.val > 5 {
 			errs = append(errs, httpx.FieldError{Field: "aspects." + f.name, Message: "ต้องเป็นจำนวนเต็ม 1–5"})
 		}
+	}
+	if in.PriceLevel != nil && (*in.PriceLevel < 1 || *in.PriceLevel > 5) {
+		errs = append(errs, httpx.FieldError{Field: "price_level", Message: "ต้องเป็นจำนวนเต็ม 1–5 หรือไม่ส่งมา"})
 	}
 	in.Comment = strings.TrimSpace(in.Comment)
 	if n := utf8.RuneCountInString(in.Comment); n < 1 || n > 1000 {
@@ -102,17 +108,17 @@ func (s *Service) Create(ctx context.Context, userID, restaurantID int64, in Inp
 		return Review{}, httpx.New("own-restaurant-review", "รีวิวร้านของตัวเองไม่ได้")
 	}
 
-	rv := Review{Aspects: in.Aspects, Comment: in.Comment, IsMine: true}
+	rv := Review{Aspects: in.Aspects, PriceLevel: in.PriceLevel, Comment: in.Comment, IsMine: true}
 	a := in.Aspects
 	err = s.Pool.QueryRow(ctx, `
 		WITH ins AS (
 		  INSERT INTO reviews (restaurant_id, user_id, rating_food, rating_ambience, rating_service, rating_value,
-		                       comment, created_at, updated_at)
-		  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		                       price_level, comment, created_at, updated_at)
+		  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
 		  RETURNING id, user_id, rating, created_at)
 		SELECT ins.id, ins.rating::float8, ins.created_at, u.display_name
 		  FROM ins JOIN users u ON u.id = ins.user_id`,
-		restaurantID, userID, a.Food, a.Ambience, a.Service, a.Value, in.Comment, now).
+		restaurantID, userID, a.Food, a.Ambience, a.Service, a.Value, in.PriceLevel, in.Comment, now).
 		Scan(&rv.ID, &rv.Rating, &rv.CreatedAt, &rv.DisplayName)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" { // unique_violation
@@ -136,15 +142,15 @@ func (s *Service) Update(ctx context.Context, userID, reviewID int64, in Input, 
 	a := in.Aspects
 	err = s.Pool.QueryRow(ctx, `
 		UPDATE reviews v SET rating_food = $3, rating_ambience = $4, rating_service = $5, rating_value = $6,
-		                     comment = $7, updated_at = $8
+		                     price_level = $7, comment = $8, updated_at = $9
 		  FROM restaurants r, users u
 		 WHERE v.id = $1 AND v.user_id = $2
 		   AND r.id = v.restaurant_id AND r.deleted_at IS NULL AND u.id = v.user_id
 		RETURNING v.id, v.rating::float8, v.rating_food, v.rating_ambience, v.rating_service, v.rating_value,
-		          v.comment, u.display_name, v.created_at, v.updated_at`,
-		reviewID, userID, a.Food, a.Ambience, a.Service, a.Value, in.Comment, now).
+		          v.price_level, v.comment, u.display_name, v.created_at, v.updated_at`,
+		reviewID, userID, a.Food, a.Ambience, a.Service, a.Value, in.PriceLevel, in.Comment, now).
 		Scan(&rv.ID, &rv.Rating, &rv.Aspects.Food, &rv.Aspects.Ambience, &rv.Aspects.Service, &rv.Aspects.Value,
-			&rv.Comment, &rv.DisplayName, &rv.CreatedAt, &updatedAt)
+			&rv.PriceLevel, &rv.Comment, &rv.DisplayName, &rv.CreatedAt, &updatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Review{}, httpx.New("not-found", "ไม่พบรีวิวนี้")
 	}
@@ -187,7 +193,7 @@ func (s *Service) List(ctx context.Context, restaurantID, viewer int64, page htt
 	}
 	rows, err := s.Pool.Query(ctx, `
 		SELECT v.id, v.rating::float8, v.rating_food, v.rating_ambience, v.rating_service, v.rating_value,
-		       v.comment, u.display_name, v.created_at,
+		       v.price_level, v.comment, u.display_name, v.created_at,
 		       v.updated_at > v.created_at, v.user_id = $2
 		  FROM reviews v JOIN users u ON u.id = v.user_id
 		 WHERE v.restaurant_id = $1
@@ -200,7 +206,7 @@ func (s *Service) List(ctx context.Context, restaurantID, viewer int64, page htt
 	items, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (Review, error) {
 		var rv Review
 		err := row.Scan(&rv.ID, &rv.Rating, &rv.Aspects.Food, &rv.Aspects.Ambience, &rv.Aspects.Service, &rv.Aspects.Value,
-			&rv.Comment, &rv.DisplayName, &rv.CreatedAt, &rv.Edited, &rv.IsMine)
+			&rv.PriceLevel, &rv.Comment, &rv.DisplayName, &rv.CreatedAt, &rv.Edited, &rv.IsMine)
 		rv.CreatedAt = rv.CreatedAt.In(booking.Bangkok)
 		return rv, err
 	})

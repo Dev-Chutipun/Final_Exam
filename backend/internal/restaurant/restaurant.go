@@ -77,10 +77,14 @@ type Detail struct {
 	AvgRating           *float64   `json:"avg_rating"`
 	// ค่าเฉลี่ยรายด้านของทุกรีวิวในร้าน null เมื่อยังไม่มีรีวิว
 	AspectAverages *ReviewAspects `json:"aspect_averages"`
-	ReviewCount    int            `json:"review_count"`
-	IsOwner        bool           `json:"is_owner"`    // ใช้ซ่อนหรือแสดงปุ่มเท่านั้น สิทธิ์จริงตัดสินที่แต่ละ endpoint
-	IsFavorite     bool           `json:"is_favorite"` // false เสมอเมื่อยังไม่ได้ login
-	MyReview       *MyReview      `json:"my_review"`
+	// ช่วงราคาต่อคนที่คนส่วนใหญ่จ่าย ใช้มัธยฐานเพราะช่วงราคาเป็นข้อมูลลำดับ เอามาเฉลี่ยไม่ได้
+	// null เมื่อมีคนระบุราคาน้อยกว่า 3 คน (น้อยกว่านั้นยังไม่ควรประกาศเป็นราคาของร้าน)
+	PriceLevel      *int      `json:"price_level"`
+	PriceLevelCount int       `json:"price_level_count"`
+	ReviewCount     int       `json:"review_count"`
+	IsOwner         bool      `json:"is_owner"`    // ใช้ซ่อนหรือแสดงปุ่มเท่านั้น สิทธิ์จริงตัดสินที่แต่ละ endpoint
+	IsFavorite      bool      `json:"is_favorite"` // false เสมอเมื่อยังไม่ได้ login
+	MyReview        *MyReview `json:"my_review"`
 }
 
 // ReviewAspects คือคะแนน 4 ด้านของรีวิว (ประกาศซ้ำในแพ็กเกจนี้แบบเดียวกับ Category
@@ -261,6 +265,7 @@ func (s *Service) Detail(ctx context.Context, restaurantID, viewer int64) (Detai
 	d := Detail{Categories: []Category{}, ImageIDs: []int64{}}
 	// ค่าเฉลี่ยรายด้านเป็น NULL พร้อมกันทั้งสี่เมื่อร้านยังไม่มีรีวิว
 	var food, ambience, service, value *float64
+	var priceLevel *int
 	err := s.Pool.QueryRow(ctx, `
 		SELECT r.id, r.name, r.description, r.capacity,
 		       to_char(r.open_time, 'HH24:MI'), to_char(r.close_time, 'HH24:MI'),
@@ -272,13 +277,16 @@ func (s *Service) Detail(ctx context.Context, restaurantID, viewer int64) (Detai
 		       (SELECT ROUND(AVG(rating_food), 1)::float8     FROM reviews WHERE restaurant_id = r.id),
 		       (SELECT ROUND(AVG(rating_ambience), 1)::float8 FROM reviews WHERE restaurant_id = r.id),
 		       (SELECT ROUND(AVG(rating_service), 1)::float8  FROM reviews WHERE restaurant_id = r.id),
-		       (SELECT ROUND(AVG(rating_value), 1)::float8    FROM reviews WHERE restaurant_id = r.id)
+		       (SELECT ROUND(AVG(rating_value), 1)::float8    FROM reviews WHERE restaurant_id = r.id),
+		       (SELECT count(*) FROM reviews WHERE restaurant_id = r.id AND price_level IS NOT NULL),
+		       (SELECT PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY price_level)
+		          FROM reviews WHERE restaurant_id = r.id AND price_level IS NOT NULL)
 		  FROM restaurants r
 		 WHERE r.id = $1 AND r.deleted_at IS NULL`, restaurantID, viewer).
 		Scan(&d.ID, &d.Name, &d.Description, &d.Capacity, &d.OpenTime, &d.CloseTime,
 			&d.CancelWindowMinutes, &d.MinLeadMinutes, &d.AcceptingBookings, &d.IsOwner,
 			&d.Address, &d.Latitude, &d.Longitude, &d.IsFavorite,
-			&d.AvgRating, &d.ReviewCount, &food, &ambience, &service, &value)
+			&d.AvgRating, &d.ReviewCount, &food, &ambience, &service, &value, &d.PriceLevelCount, &priceLevel)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, httpx.New("not-found", "ไม่พบร้านนี้")
 	}
@@ -287,6 +295,10 @@ func (s *Service) Detail(ctx context.Context, restaurantID, viewer int64) (Detai
 	}
 	if food != nil {
 		d.AspectAverages = &ReviewAspects{Food: *food, Ambience: *ambience, Service: *service, Value: *value}
+	}
+	// ต้องมีคนระบุอย่างน้อย 3 คน ไม่อย่างนั้นคนเดียวตอบก็กลายเป็นราคาของร้านไปเลย
+	if d.PriceLevelCount >= 3 {
+		d.PriceLevel = priceLevel
 	}
 
 	rows, err := s.Pool.Query(ctx, `

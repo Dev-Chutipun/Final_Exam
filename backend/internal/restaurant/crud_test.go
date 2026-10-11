@@ -764,3 +764,52 @@ func favoriteNames(t *testing.T, e *env, user int64) []string {
 	}
 	return out
 }
+
+// V16 ราคาเฉลี่ยของร้าน: ใช้มัธยฐาน ไม่ใช่ค่าเฉลี่ย · ต้องมีคนระบุอย่างน้อย 3 คน
+func TestRestaurantPriceLevelV16(t *testing.T) {
+	e := newEnv(t)
+	owner := e.user("owner")
+	r := e.createViaAPI(owner, "ร้านทดสอบราคา")
+	n := 0
+	rate := func(price any) {
+		n++
+		e.exec(`INSERT INTO reviews (restaurant_id, user_id, rating_food, rating_ambience, rating_service, rating_value,
+		                             price_level, comment)
+		        VALUES ($1, $2, 4, 4, 4, 4, $3, 'ok')`, r, e.user(fmt.Sprint("p", n)), price)
+	}
+	level := func() (any, any) {
+		_, _, d := e.do("GET", "/api/restaurants/"+itoa(r), 0, "")
+		return d["price_level"], d["price_level_count"]
+	}
+
+	// ยังไม่มีใครระบุ → null
+	if lv, c := level(); lv != nil || c != float64(0) {
+		t.Fatalf("ไม่มีใครระบุ: %v %v", lv, c)
+	}
+
+	// 2 คนยังไม่พอที่จะประกาศเป็นราคาของร้าน
+	rate(2)
+	rate(2)
+	if lv, c := level(); lv != nil || c != float64(2) {
+		t.Errorf("2 คน: %v %v", lv, c)
+	}
+
+	// ครบ 3 คนแล้วจึงแสดง · [2,2,3] มัธยฐาน = 2
+	rate(3)
+	if lv, c := level(); lv != float64(2) || c != float64(3) {
+		t.Errorf("3 คน: %v %v", lv, c)
+	}
+
+	// คนที่ 4 จัดเลี้ยงจ่ายหนัก ค่าเฉลี่ยจะถูกลากขึ้นแต่มัธยฐานต้องไม่ขยับ
+	// [2,2,3,5] ค่าเฉลี่ย = 3.0 แต่มัธยฐาน (PERCENTILE_DISC) = 2
+	rate(5)
+	if lv, c := level(); lv != float64(2) || c != float64(4) {
+		t.Errorf("มีค่าสุดโต่ง: %v %v (มัธยฐานต้องไม่ขยับ)", lv, c)
+	}
+
+	// รีวิวที่ไม่ระบุราคาต้องไม่ถูกนับ
+	rate(nil)
+	if _, c := level(); c != float64(4) {
+		t.Errorf("นับเฉพาะคนที่ระบุ: %v", c)
+	}
+}

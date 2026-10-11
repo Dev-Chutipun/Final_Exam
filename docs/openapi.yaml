@@ -926,6 +926,8 @@ components:
             - type: 'null'
             - $ref: '#/components/schemas/ReviewAspectAverages'
           description: null เมื่อร้านยังไม่มีรีวิว
+        price_level: { type: [integer, 'null'], description: มัธยฐานของช่วงราคาที่ลูกค้าระบุ · null เมื่อมีคนระบุน้อยกว่า 3 คน }
+        price_level_count: { type: integer, description: จำนวนรีวิวที่ระบุราคา }
         my_review:
           oneOf:
             - type: 'null'
@@ -1156,6 +1158,7 @@ components:
       description: ไม่รับ rating เพราะคะแนนรวมเป็น generated column ที่คำนวณจาก aspects
       properties:
         aspects: { $ref: '#/components/schemas/ReviewAspects' }
+        price_level: { type: [integer, 'null'], minimum: 1, maximum: 5, description: "ช่วงราคาต่อคน 1=<100 2=100-200 3=201-300 4=301-500 5=>500 · null = ไม่ระบุ" }
         comment: { type: string, minLength: 1, maxLength: 1000, description: ตัดช่องว่างหัวท้ายแล้วนับเป็นตัวอักษร }
 
     Review:
@@ -1164,6 +1167,7 @@ components:
         id: { type: integer }
         rating: { type: number, description: คะแนนรวม = ค่าเฉลี่ยของ aspects ฐานข้อมูลคำนวณให้ }
         aspects: { $ref: '#/components/schemas/ReviewAspects' }
+        price_level: { type: [integer, 'null'] }
         comment: { type: string }
         display_name: { type: string }
         created_at: { type: string, format: date-time }

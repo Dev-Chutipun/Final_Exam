@@ -15,7 +15,7 @@ import { useSuccessDialog } from "@/components/success-dialog";
 import { apiSend } from "@/lib/api-client";
 import { ApiError, problemMessage } from "@/lib/problem";
 import { formatDate } from "@/lib/time";
-import { ASPECTS, type Page, type RestaurantDetail, type Review, type ReviewAspects } from "@/lib/types";
+import { ASPECTS, PRICE_LEVELS, priceLabel, type Page, type RestaurantDetail, type Review, type ReviewAspects } from "@/lib/types";
 
 const PAGE_SIZE = 10;
 
@@ -111,6 +111,16 @@ export function Reviews({
         </div>
       </div>
 
+      {/* ราคาที่ลูกค้าจ่ายจริง ใช้มัธยฐานจึงไม่ถูกคนจัดเลี้ยงรายเดียวลากขึ้น */}
+      {restaurant.price_level !== null && (
+        <div className="flex flex-wrap items-center gap-2.5 rounded-[18px] border border-white/95 bg-(--st-mint-bg)/60 px-4 py-3 text-sm">
+          <span className="font-heading font-semibold text-(--st-mint-ink)">
+            ราคาต่อคนประมาณ {priceLabel(restaurant.price_level)}
+          </span>
+          <span className="text-(--ink-2)">จากลูกค้าที่ระบุ {restaurant.price_level_count} คน</span>
+        </div>
+      )}
+
       {/* แยกรายด้านให้เห็นว่าคะแนนรวมมาจากอะไร เช่น อาหารดีแต่บริการช้า */}
       {restaurant.aspect_averages && (
         <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
@@ -163,6 +173,7 @@ export function Reviews({
                     <StarIcon size={13} />
                     {r.rating.toFixed(1)}/5
                   </Pill>
+                  {r.price_level !== null && <Pill tone="mint">{priceLabel(r.price_level, true)}/คน</Pill>}
                   <span className="text-sm text-(--ink-2)">{formatDate(r.created_at)}</span>
                   {r.edited && <span className="text-[13px] text-(--ink-2)">แก้ไขแล้ว</span>}
                   {r.is_mine && <Pill tone="lav">รีวิวของคุณ</Pill>}
@@ -284,6 +295,7 @@ function ReviewForm({
   onChanged: () => Promise<void>;
 }) {
   const [aspects, setAspects] = useState<ReviewAspects>(mine?.aspects ?? { food: 0, ambience: 0, service: 0, value: 0 });
+  const [price, setPrice] = useState<number | null>(mine?.price_level ?? null);
   const [comment, setComment] = useState(mine?.comment ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -298,8 +310,9 @@ function ReviewForm({
     setBusy(true);
     setErrors({});
     try {
-      if (mine) await apiSend("PUT", `/api/reviews/${mine.id}`, { aspects, comment });
-      else await apiSend("POST", `/api/restaurants/${restaurantId}/reviews`, { aspects, comment });
+      const body = { aspects, comment, price_level: price };
+      if (mine) await apiSend("PUT", `/api/reviews/${mine.id}`, body);
+      else await apiSend("POST", `/api/restaurants/${restaurantId}/reviews`, body);
       showSuccess({
         title: mine ? "บันทึกรีวิวแล้ว" : "ส่งรีวิวแล้ว",
         detail: `คะแนนรวม ${overall.toFixed(1)} จาก 5`,
@@ -355,6 +368,34 @@ function ReviewForm({
           </div>
         ))}
       </div>
+      {/* ไม่บังคับ: บางคนมีคนเลี้ยงหรือจำไม่ได้ และบังคับกรอกดาว 4 ด้านไปแล้ว */}
+      <div className="flex flex-col gap-1.5 text-sm font-semibold">
+        <span>
+          จ่ายไปประมาณเท่าไหร่ต่อคน <span className="font-normal text-(--ink-3)">(ไม่บังคับ)</span>
+        </span>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="ช่วงราคาต่อคน">
+          {PRICE_LEVELS.map((p) => {
+            const on = price === p.level;
+            return (
+              <button
+                key={p.level}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setPrice(on ? null : p.level)}
+                className={`flex min-h-[38px] items-center rounded-full border px-3.5 text-[13px] ${
+                  on
+                    ? "border-(--btn-primary-to) bg-linear-to-b from-(--btn-primary-from) to-(--btn-primary-to) font-semibold"
+                    : "border-white/95 bg-white/70 font-medium text-(--ink-2)"
+                }`}
+              >
+                {p.short}
+              </button>
+            );
+          })}
+        </div>
+        {errors.price_level && <span className="text-[13px] font-medium text-(--st-pink-ink)">{errors.price_level}</span>}
+      </div>
+
       <label className="flex flex-col gap-1.5 text-sm font-semibold">
         ข้อความรีวิว
         <textarea

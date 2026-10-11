@@ -19,6 +19,7 @@ export type RestaurantListItem = {
   cover_image_id: number | null;
   is_mine: boolean;
   is_favorite: boolean;
+  price_level: number | null;
 };
 
 /** รายการใน GET /api/me/favorites */
@@ -54,11 +55,28 @@ export type RestaurantDetail = {
   is_owner: boolean;
   is_favorite: boolean;
   aspect_averages: ReviewAspects | null;
-  my_review: { id: number; rating: number; aspects: ReviewAspects; comment: string } | null;
+  price_level: number | null;
+  price_level_count: number;
+  my_review: { id: number; rating: number; aspects: ReviewAspects; price_level: number | null; comment: string } | null;
 };
 
 /** คะแนน 4 ด้านที่ผู้รีวิวให้ · คะแนนรวมคือค่าเฉลี่ยของสี่ค่านี้ ฐานข้อมูลคำนวณให้ */
 export type ReviewAspects = { food: number; ambience: number; service: number; value: number };
+
+/** ช่วงราคาต่อคน ลำดับ 1–5 · ตรงกับ CHECK ใน migrations/0007 */
+export const PRICE_LEVELS = [
+  { level: 1, label: "ต่ำกว่า 100 บาท", short: "< 100 ฿" },
+  { level: 2, label: "100–200 บาท", short: "100–200 ฿" },
+  { level: 3, label: "201–300 บาท", short: "201–300 ฿" },
+  { level: 4, label: "301–500 บาท", short: "301–500 ฿" },
+  { level: 5, label: "มากกว่า 500 บาท", short: "> 500 ฿" },
+] as const;
+
+/** คืนป้ายของช่วงราคา (null = ไม่ระบุ) */
+export function priceLabel(level: number | null, short = false): string | null {
+  const p = PRICE_LEVELS.find((x) => x.level === level);
+  return p ? (short ? p.short : p.label) : null;
+}
 
 export const ASPECTS = [
   { key: "food", label: "อาหาร" },
@@ -71,6 +89,7 @@ export type Review = {
   id: number;
   rating: number;
   aspects: ReviewAspects;
+  price_level: number | null;
   comment: string;
   display_name: string;
   created_at: string;

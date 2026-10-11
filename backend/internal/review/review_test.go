@@ -359,6 +359,10 @@ func TestListRestaurantsFields(t *testing.T) {
 	if len(cats) != 2 || cats[0].(map[string]any)["slug"] != "thai" || cats[1].(map[string]any)["name_th"] != "อาหารทะเล" {
 		t.Errorf("categories = %v", cats)
 	}
+	// ตรึงลำดับคอลัมน์ไว้: price_level อยู่ก่อน is_favorite ใน SELECT ถ้าสลับกันจะ scan ผิดชนิดทันที
+	if it["price_level"] != nil || it["is_favorite"] != false {
+		t.Errorf("price_level/is_favorite = %v %v", it["price_level"], it["is_favorite"])
+	}
 	if it["cover_image_id"] != float64(1) || it["is_mine"] != true || it["open_time"] != "10:00" || it["accepting_bookings"] != true {
 		t.Errorf("item = %v", it)
 	}
@@ -488,5 +492,43 @@ func TestReviewAspectsV13(t *testing.T) {
 	asp := body["aspects"].(map[string]any)
 	if asp["food"] != float64(5) || asp["service"] != float64(3) {
 		t.Errorf("aspects = %v", asp)
+	}
+}
+
+// V15 ช่วงราคาต่อคน: ไม่บังคับ · นอกช่วง 400 · แก้ไขและล้างได้
+func TestReviewPriceLevelV15(t *testing.T) {
+	e := newEnv(t)
+	owner, me := e.user("owner"), e.user("me")
+	r := e.restaurant(owner)
+	path := "/api/restaurants/" + itoa(r) + "/reviews"
+	full := func(price string) string {
+		return `{"aspects": {"food": 4, "ambience": 4, "service": 4, "value": 4}, "comment": "ทดสอบราคา"` + price + `}`
+	}
+
+	for _, bad := range []string{`, "price_level": 0`, `, "price_level": 6`, `, "price_level": 2.5`} {
+		if status, typ, _ := e.do(http.MethodPost, path, me, full(bad)); status != 400 || typ != "/problems/validation" {
+			t.Errorf("%s: %d %s", bad, status, typ)
+		}
+	}
+
+	// ไม่ส่งมาเลย = ไม่ระบุ ต้องสร้างได้ (ช่องนี้ไม่บังคับ)
+	status, _, body := e.do(http.MethodPost, path, me, full(""))
+	if status != 201 || body["price_level"] != nil {
+		t.Fatalf("ไม่ระบุราคา: %d %v", status, body["price_level"])
+	}
+	id := itoa(int64(body["id"].(float64)))
+
+	// แก้ให้มีราคา แล้วล้างทิ้งด้วยการไม่ส่งมาอีก
+	if _, _, b := e.do(http.MethodPut, "/api/reviews/"+id, me, full(`, "price_level": 3`)); b["price_level"] != float64(3) {
+		t.Errorf("แก้เป็น 3: %v", b["price_level"])
+	}
+	if _, _, b := e.do(http.MethodPut, "/api/reviews/"+id, me, full("")); b["price_level"] != nil {
+		t.Errorf("ล้างราคา: %v", b["price_level"])
+	}
+	// รายการรีวิวต้องส่งค่ากลับด้วย
+	e.do(http.MethodPut, "/api/reviews/"+id, me, full(`, "price_level": 5`))
+	_, _, list := e.do(http.MethodGet, path, me, "")
+	if first := list["items"].([]any)[0].(map[string]any); first["price_level"] != float64(5) {
+		t.Errorf("ในรายการ: %v", first["price_level"])
 	}
 }

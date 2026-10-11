@@ -30,6 +30,7 @@ type ListItem struct {
 	CoverImageID      *int64     `json:"cover_image_id"` // รูปที่ id น้อยที่สุดของร้าน
 	IsMine            bool       `json:"is_mine"`
 	IsFavorite        bool       `json:"is_favorite"` // false เสมอเมื่อยังไม่ได้ login
+	PriceLevel        *int       `json:"price_level"` // ช่วงราคาต่อคน 1–5 · null เมื่อมีคนระบุน้อยกว่า 3 คน
 }
 
 // sorts แมปค่า sort กับ ORDER BY เป็นสตริงคงที่ ทุกแบบมี id เป็นตัวตัดสินสุดท้าย
@@ -130,6 +131,8 @@ func (s *Service) ListRestaurants(ctx context.Context, sort string, f Filter, vi
 		         COUNT(v.id)                     AS review_count,
 		         AVG(v.rating)                   AS avg_raw,
 		         ROUND(AVG(v.rating), 1)::float8 AS avg_rating,
+		         CASE WHEN count(v.price_level) >= 3
+		              THEN PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY v.price_level) END AS price_level,
 		         CASE WHEN COUNT(v.id) = 0 THEN NULL
 		              ELSE (5 * g.m + SUM(v.rating)) / (5 + COUNT(v.id)) END AS score
 		    FROM restaurants r
@@ -139,7 +142,7 @@ func (s *Service) ListRestaurants(ctx context.Context, sort string, f Filter, vi
 		   GROUP BY r.id, g.m
 		)
 		SELECT id, name, capacity, to_char(open_time, 'HH24:MI'), to_char(close_time, 'HH24:MI'),
-		       accepting_bookings, owner_id = $5, review_count, avg_rating,
+		       accepting_bookings, owner_id = $5, review_count, avg_rating, price_level,
 		       EXISTS (SELECT 1 FROM favorites f WHERE f.restaurant_id = s.id AND f.user_id = $5)
 		  FROM s
 		 ORDER BY `+sorts[sort]+`
@@ -151,7 +154,7 @@ func (s *Service) ListRestaurants(ctx context.Context, sort string, f Filter, vi
 	items, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (ListItem, error) {
 		it := ListItem{Categories: []Category{}}
 		err := row.Scan(&it.ID, &it.Name, &it.Capacity, &it.OpenTime, &it.CloseTime,
-			&it.AcceptingBookings, &it.IsMine, &it.ReviewCount, &it.AvgRating, &it.IsFavorite)
+			&it.AcceptingBookings, &it.IsMine, &it.ReviewCount, &it.AvgRating, &it.PriceLevel, &it.IsFavorite)
 		return it, err
 	})
 	if err != nil {

@@ -173,6 +173,16 @@ func (r restaurant) description() string {
 	return b.String()
 }
 
+// priceLevels คือช่วงราคาต่อคนที่คนส่วนใหญ่จ่ายในร้านนั้น ใช้ตั้งต้นให้รีวิวที่สร้างเพิ่ม
+// 1 = ต่ำกว่า 100 · 2 = 100–200 · 3 = 201–300 · 4 = 301–500 · 5 = มากกว่า 500
+var priceLevels = map[string]int{
+	"khaosoi": 1,
+	"tea":     2, "dimsum": 2, "pho": 2, "isan": 2, "tomyum": 2, "bingsu": 2, "bakery": 2, "gaiyang": 2, "jok": 2,
+	"klong": 3, "pasta": 3, "ramen": 3, "salad": 3,
+	"sushi": 4, "steak": 4, "bbqk": 4, "hotpot": 4, "pizza": 4,
+	"seafood": 5,
+}
+
 // สีไล่ของภาพปกตาม 05 §5 (ตามหมวดแรกของร้าน)
 var coverStops = map[int][3]string{
 	1: {"#FFE5D8", "#FFC7B4", "#FAACA6"}, 9: {"#FFE5D8", "#FFC7B4", "#FAACA6"}, 5: {"#FFE5D8", "#FFC7B4", "#FAACA6"},
@@ -743,12 +753,23 @@ func (s *seeder) bulkReviews(seq int) error {
 			created := s.now.Add(-time.Duration(1+(n*181)/max(want, 1)) * 24 * time.Hour)
 			if _, err := s.tx.Exec(s.ctx, `
 				INSERT INTO reviews (restaurant_id, user_id, rating_food, rating_ambience, rating_service, rating_value,
-				                     comment, created_at, updated_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
-				s.rest[r.key], s.users[key], a[0], a[1], a[2], a[3], comment, created); err != nil {
+				                     price_level, comment, created_at, updated_at)
+				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
+				s.rest[r.key], s.users[key], a[0], a[1], a[2], a[3], priceAround(priceLevels[r.key], n), comment, created); err != nil {
 				return fmt.Errorf("bulk review %s #%d: %w", r.key, n, err)
 			}
 		}
 	}
 	return nil
+}
+
+// priceAround กระจายช่วงราคารอบ ๆ ระดับของร้าน แบบไม่สุ่ม (seed เดิมต้องได้ผลเดิมเสมอ)
+// ทุก ๆ 7 รีวิวจะมีหนึ่งคนไม่ระบุราคา เพื่อให้ข้อมูลเดโมมีทั้งแบบระบุและไม่ระบุ
+// ส่วนที่เหลือเหลื่อม −1, 0, 0, +1 แล้วหนีบไว้ใน 1–5 มัธยฐานจึงยังตรงกับระดับของร้าน
+func priceAround(base, n int) *int {
+	if base == 0 || n%7 == 6 {
+		return nil
+	}
+	level := min(5, max(1, base+[]int{-1, 0, 0, 1}[n%4]))
+	return &level
 }

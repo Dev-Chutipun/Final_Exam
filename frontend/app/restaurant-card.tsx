@@ -4,7 +4,7 @@ import { CoverImage } from "@/components/cover-image";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ClockIcon, PeopleIcon, StarIcon } from "@/components/icons";
 import { Pill } from "@/components/pill";
-import type { RestaurantListItem } from "@/lib/types";
+import { priceLabel, type RestaurantListItem } from "@/lib/types";
 
 export function RestaurantCard({ r, loggedIn }: { r: RestaurantListItem; loggedIn: boolean }) {
   return (
@@ -57,6 +57,7 @@ export function RestaurantCard({ r, loggedIn }: { r: RestaurantListItem; loggedI
             {r.capacity} ที่นั่ง
           </span>
           <span>{r.review_count} รีวิว</span>
+          {r.price_level !== null && <span>~{priceLabel(r.price_level, true)}/คน</span>}
         </div>
       </div>
     </Link>
